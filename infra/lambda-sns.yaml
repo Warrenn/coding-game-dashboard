@@ -121,7 +121,7 @@ Resources:
     Properties:
       FunctionName: !Sub '${AppName}-fetcher'
       Runtime: nodejs20.x
-      Handler: index.handler
+      Handler: handler.handler
       MemorySize: 256
       Timeout: 30
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -136,6 +136,8 @@ Resources:
           // Placeholder — real bundle uploaded post-deploy by
           // `aws lambda update-function-code`. Returns 501 so a hit during
           // the gap between create-stack and code upload is loud, not silent.
+          // Filename inside the zip is index.js when ZipFile inline; the
+          // post-deploy bundle is handler.mjs (matches Handler config).
           exports.handler = async () => ({
             statusCode: 501,
             headers: { 'content-type': 'application/json' },

@@ -56,7 +56,7 @@ Deployed and verified:
 | Cognito Identity Pool `us-east-1:a9b0ce89-9b35-43ff-a0c6-81ffeeff5deb` | created, Google provider with placeholder Client ID                                                                                  |
 | IAM `coding-game-dashboard-payer` / `-player` roles                    | created                                                                                                                              |
 | Lambda `coding-game-dashboard-fetcher`                                 | Active, real bundle uploaded (1.4 MB unzipped)                                                                                       |
-| Lambda Function URL                                                    | `https://ndov5c5ele6ae2hqiwiusqfbke0bizbr.lambda-url.us-east-1.on.aws/` (AWS_IAM auth — verified rejects unsigned requests with 403) |
+| Lambda Function URL                                                    | `https://ndov5c5ele6ae2hqiwiusqfbke0bizbr.lambda-url.us-east-1.on.aws/` (AWS_IAM auth — verified end-to-end: unsigned → 403; SigV4-signed POST /snapshot → 412 `agreement-handle-not-configured`, proving handler loaded and DDB read worked) |
 | SNS topic `coding-game-dashboard-payment-requests`                     | created                                                                                                                              |
 | SNS email subscription                                                 | **PendingConfirmation** for warrenne@gmail.com                                                                                       |
 

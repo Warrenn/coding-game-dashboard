@@ -102,6 +102,26 @@ The non-CloudFront slice of the system is functional. To finish:
    re-deploy lambda-sns (now with real `AllowedOrigin`), and upload the
    web bundle
 
+## Lambda Handler config fix (post-initial-deploy)
+
+- **2026-04-25** — Initial CFN had `Handler: index.handler` but the bundle
+  is `handler.mjs`. AWS Lambda runtime resolves `<filename>.<exportName>`,
+  so `index.handler` looked for `index.mjs` in the zip and failed with
+  `Runtime.ImportModuleError: Cannot find module 'index'`. Fixed in
+  `infra/lambda-sns.yaml` to `Handler: handler.handler` (matches the
+  source file name). End-to-end verified: SigV4-signed POST /snapshot
+  returns 412 `agreement-handle-not-configured` — handler loads, reads
+  DDB, returns expected response.
+
+## CloudFront verification (post-retry)
+
+- **2026-04-25** — Probe stack with just `AWS::CloudFront::OriginAccessControl`
+  succeeded, but a full hosting stack with `AWS::CloudFront::Distribution`
+  failed with the same "Access denied: account must be verified" error.
+  The gate is specifically on the Distribution resource type, not all
+  CloudFront resources. User still needs to contact AWS Support to enable
+  Distribution creation for this account.
+
 ## Reverting
 
 If a decision is wrong, the simplest path is `git revert` the commit that
