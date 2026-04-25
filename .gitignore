@@ -250,3 +250,4 @@ infra/packaged.yaml
 
 # macOS
 .DS_Store
+.claude/
