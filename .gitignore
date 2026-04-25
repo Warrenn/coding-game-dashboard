@@ -216,3 +216,37 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node / npm / TypeScript
+node_modules/
+.npm/
+*.tsbuildinfo
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.vite/
+
+# Test outputs
+coverage/
+
+# Local environment
+.env.local
+.env.*.local
+
+# Lambda bundle artifacts
+lambda/dist/
+lambda/bundle.zip
+
+# CFN packaged artifacts
+infra/.aws-sam/
+infra/packaged.yaml
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store

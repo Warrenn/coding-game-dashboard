@@ -122,15 +122,15 @@ volume + identifying User-Agent + cache (see Legal posture).
 
 PK / SK pattern (string types). All entries use `LeadingKeys` for IAM scoping.
 
-| PK | SK | Owner write | Description |
-|---|---|---|---|
-| `AGREEMENT` | `META` | payer | Handle, currency, audit info |
-| `AGREEMENT` | `RULE#<ruleId>` | payer | One pricing rule (e.g. badge level → price) |
-| `SNAPSHOT` | `LATEST` | lambda | Last fetch result; `ttl` attribute set by Lambda |
-| `ACHIEVEMENT` | `<achievementKey>` | lambda | One detected achievement, with `detectedAt` and `unitPriceAtDetection` (informational only — pricing is recomputed on display) |
-| `REQUEST` | `<ts>#<requestId>` | player | Payment request from player |
-| `PAYMENT` | `<ts>#<paymentId>` | payer | Recorded payment; embeds line items as `{achievementKey, unitPriceAtPayment, quantity}` (immutable) |
-| `INBOX#<recipient>` | `<ts>#<eventId>` | lambda | In-app notification rows |
+| PK                  | SK                 | Owner write | Description                                                                                                                    |
+| ------------------- | ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `AGREEMENT`         | `META`             | payer       | Handle, currency, audit info                                                                                                   |
+| `AGREEMENT`         | `RULE#<ruleId>`    | payer       | One pricing rule (e.g. badge level → price)                                                                                    |
+| `SNAPSHOT`          | `LATEST`           | lambda      | Last fetch result; `ttl` attribute set by Lambda                                                                               |
+| `ACHIEVEMENT`       | `<achievementKey>` | lambda      | One detected achievement, with `detectedAt` and `unitPriceAtDetection` (informational only — pricing is recomputed on display) |
+| `REQUEST`           | `<ts>#<requestId>` | player      | Payment request from player                                                                                                    |
+| `PAYMENT`           | `<ts>#<paymentId>` | payer       | Recorded payment; embeds line items as `{achievementKey, unitPriceAtPayment, quantity}` (immutable)                            |
+| `INBOX#<recipient>` | `<ts>#<eventId>`   | lambda      | In-app notification rows                                                                                                       |
 
 `recipient` is `PAYER` or `PLAYER`. IAM policy gives PlayerRole write only to
 `PK = REQUEST` (and read on the rest); PayerRole gets write on `PK in {AGREEMENT,
@@ -145,15 +145,15 @@ on data model; data model is shared). Decomposition produces only one disjoint p
 
 ### Cost ledger (forever-free targets)
 
-| Service | Free tier | Expected use | Headroom |
-|---|---|---|---|
-| S3 | 5 GB / 12 mo | <50 MB | ample |
-| CloudFront | 1 TB out + 10M reqs forever | tiny | enormous |
-| Cognito Identity Pool | always free | 2 users | n/a |
-| DynamoDB | 25 GB + 25 RCU/25 WCU forever | <10 MB | enormous |
-| Lambda | 1M reqs + 400k GB-s forever | <2k reqs/mo | enormous |
-| SNS | 1k email + 1M reqs forever | <50 emails/mo | ample |
-| CloudWatch Logs | 5 GB/mo forever | minimal | ample |
+| Service               | Free tier                     | Expected use  | Headroom |
+| --------------------- | ----------------------------- | ------------- | -------- |
+| S3                    | 5 GB / 12 mo                  | <50 MB        | ample    |
+| CloudFront            | 1 TB out + 10M reqs forever   | tiny          | enormous |
+| Cognito Identity Pool | always free                   | 2 users       | n/a      |
+| DynamoDB              | 25 GB + 25 RCU/25 WCU forever | <10 MB        | enormous |
+| Lambda                | 1M reqs + 400k GB-s forever   | <2k reqs/mo   | enormous |
+| SNS                   | 1k email + 1M reqs forever    | <50 emails/mo | ample    |
+| CloudWatch Logs       | 5 GB/mo forever               | minimal       | ample    |
 
 Net target: **$0/month** steady state.
 
@@ -233,8 +233,8 @@ CodinGame calls.
 
 1. **Scaffold repo layout** — `web/` (Vite+React+TS+Jest), `lambda/` (Node 20 + TS +
    Jest), `infra/` (CloudFormation YAML), `tools/mock-codingame/`, `shared/` (types
-   + zod schemas), root npm workspaces, `.editorconfig`, `.prettierrc`,
-   `tsconfig.base.json`, `README.md`.
+   - zod schemas), root npm workspaces, `.editorconfig`, `.prettierrc`,
+     `tsconfig.base.json`, `README.md`.
 2. **Mock CodinGame server** — TDD: write Jest tests asserting the three routes match
    real shapes (using the captured fixture as source-of-truth) and that error/edge
    handles behave correctly, then implement. Capture real fixtures using a script
@@ -317,7 +317,7 @@ CodinGame calls.
 
 ## Progress
 
-- [ ] Step 1 — Scaffold repo layout
+- [x] Step 1 — Scaffold repo layout — completed 2026-04-25
 - [ ] Step 2 — Mock CodinGame server with captured fixtures
 - [ ] Step 3 — CloudFormation: storage + identity
 - [ ] Step 4 — CloudFormation: hosting
