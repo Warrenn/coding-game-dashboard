@@ -330,4 +330,4 @@ CodinGame calls.
 - [x] Step 11 — Web: Payer view — completed 2026-04-25
 - [x] Step 12 — Theme pass — completed 2026-04-25
 - [x] Step 13 — Security hardening pass — completed 2026-04-25
-- [ ] Step 14 — Deploy + smoke test
+- [x] Step 14 — Deploy + smoke test — partial 2026-04-25 (storage-identity + lambda-sns deployed and smoke-tested; hosting stack blocked on AWS CloudFront account verification — see DEPLOY.md)

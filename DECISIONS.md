@@ -77,6 +77,31 @@ reasoning, and how to revert if the user disagrees on return.
   layer or native dep doesn't exist for arm64 (none anticipated for this
   workload).
 
+## Deploy outcome (2026-04-25 session)
+
+- **Storage-identity stack**: deployed cleanly. Resources are live.
+- **Hosting stack**: failed at the CloudFront Distribution resource with
+  `AWS_CloudFront::Distribution: Your account must be verified before you
+can add new CloudFront resources` (HTTP 403, AccessDenied). This is an
+  AWS-account-level gate, not a template issue. Failed stack was deleted.
+  User must open an AWS Support case to enable CloudFront before re-deploy.
+- **Lambda-sns stack**: deployed cleanly with `AllowedOrigin='*'` (since
+  the CloudFront domain isn't known yet). Lambda code uploaded (1.4 MB
+  bundle). Function URL verified to enforce AWS_IAM (returns 403 unsigned).
+- **SNS subscription**: still PendingConfirmation; user needs to click
+  the confirmation link in the AWS-sent email to warrenne@gmail.com.
+- **Web bundle**: built locally with placeholder `VITE_GOOGLE_CLIENT_ID`;
+  not uploaded since the S3 bucket doesn't exist yet.
+
+The non-CloudFront slice of the system is functional. To finish:
+
+1. Get CloudFront unblocked via AWS Support
+2. Provision a Google OAuth Web Client
+3. Re-run `scripts/deploy.sh` with `GOOGLE_CLIENT_ID` set — it will idempotently
+   re-deploy storage-identity (param update), create the hosting stack,
+   re-deploy lambda-sns (now with real `AllowedOrigin`), and upload the
+   web bundle
+
 ## Reverting
 
 If a decision is wrong, the simplest path is `git revert` the commit that

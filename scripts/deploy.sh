@@ -67,19 +67,34 @@ echo "    LEDGER_TABLE=$LEDGER_TABLE"
 echo "    IDENTITY_POOL=$IDENTITY_POOL"
 
 echo "=== 3. Deploy hosting ==="
+HOSTING_OK=true
 aws_ cloudformation deploy \
   --stack-name "$APP-hosting" \
   --template-file infra/hosting.yaml \
-  --parameter-overrides AppName="$APP"
+  --parameter-overrides AppName="$APP" || HOSTING_OK=false
 
-STATIC_BUCKET=$(cfn_output "$APP-hosting" StaticBucketName)
-DIST_ID=$(cfn_output "$APP-hosting" DistributionId)
-DIST_DOMAIN=$(cfn_output "$APP-hosting" DistributionDomainName)
-echo "    STATIC_BUCKET=$STATIC_BUCKET"
-echo "    DIST_ID=$DIST_ID"
-echo "    DIST_DOMAIN=$DIST_DOMAIN"
+STATIC_BUCKET=""
+DIST_ID=""
+DIST_DOMAIN=""
+if [ "$HOSTING_OK" = true ]; then
+  STATIC_BUCKET=$(cfn_output "$APP-hosting" StaticBucketName)
+  DIST_ID=$(cfn_output "$APP-hosting" DistributionId)
+  DIST_DOMAIN=$(cfn_output "$APP-hosting" DistributionDomainName)
+  echo "    STATIC_BUCKET=$STATIC_BUCKET"
+  echo "    DIST_ID=$DIST_ID"
+  echo "    DIST_DOMAIN=$DIST_DOMAIN"
+else
+  echo "    !! hosting stack failed — likely CloudFront account-verification gate."
+  echo "    !! Open an AWS Support case to enable CloudFront, then re-run."
+  echo "    !! Continuing with lambda-sns and skipping web upload."
+  aws_ cloudformation delete-stack --stack-name "$APP-hosting" 2>/dev/null || true
+fi
 
 echo "=== 4. Deploy lambda-sns ==="
+LAMBDA_ALLOWED_ORIGIN="*"
+if [ -n "$DIST_DOMAIN" ]; then
+  LAMBDA_ALLOWED_ORIGIN="https://$DIST_DOMAIN"
+fi
 aws_ cloudformation deploy \
   --stack-name "$APP-lambda-sns" \
   --template-file infra/lambda-sns.yaml \
@@ -89,7 +104,7 @@ aws_ cloudformation deploy \
     PayerEmail="$PAYER_EMAIL" \
     LedgerTableName="$LEDGER_TABLE" \
     LedgerTableArn="$LEDGER_ARN" \
-    AllowedOrigin="https://$DIST_DOMAIN"
+    AllowedOrigin="$LAMBDA_ALLOWED_ORIGIN"
 
 LAMBDA_NAME=$(cfn_output "$APP-lambda-sns" FetcherFunctionName)
 LAMBDA_URL=$(cfn_output "$APP-lambda-sns" FetcherUrl)
@@ -108,31 +123,40 @@ aws_ lambda update-function-code \
   >/dev/null
 echo "    lambda code uploaded"
 
-echo "=== 6. Build web with CFN-output env vars ==="
-LAMBDA_URL_HOST=$(echo "$LAMBDA_URL" | sed -E 's#https?://([^/]+)/?.*#\1#')
-VITE_AWS_REGION="$REGION" \
-VITE_COGNITO_IDENTITY_POOL_ID="$IDENTITY_POOL" \
-VITE_PAYER_EMAIL="$PAYER_EMAIL" \
-VITE_PLAYER_EMAIL="$PLAYER_EMAIL" \
-VITE_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
-VITE_LEDGER_TABLE="$LEDGER_TABLE" \
-VITE_LAMBDA_URL="$LAMBDA_URL" \
-  npm --prefix web run build
-echo "    web bundle built (web/dist)"
+if [ "$HOSTING_OK" = true ]; then
+  echo "=== 6. Build web with CFN-output env vars ==="
+  VITE_AWS_REGION="$REGION" \
+  VITE_COGNITO_IDENTITY_POOL_ID="$IDENTITY_POOL" \
+  VITE_PAYER_EMAIL="$PAYER_EMAIL" \
+  VITE_PLAYER_EMAIL="$PLAYER_EMAIL" \
+  VITE_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
+  VITE_LEDGER_TABLE="$LEDGER_TABLE" \
+  VITE_LAMBDA_URL="$LAMBDA_URL" \
+    npm --prefix web run build
+  echo "    web bundle built (web/dist)"
 
-echo "=== 7. Sync web bundle to S3 ==="
-aws_ s3 sync web/dist "s3://$STATIC_BUCKET/" --delete
-echo "=== Invalidate CloudFront ==="
-aws_ cloudfront create-invalidation \
-  --distribution-id "$DIST_ID" \
-  --paths "/*" \
-  --query 'Invalidation.Id' --output text
+  echo "=== 7. Sync web bundle to S3 ==="
+  aws_ s3 sync web/dist "s3://$STATIC_BUCKET/" --delete
+  echo "=== Invalidate CloudFront ==="
+  aws_ cloudfront create-invalidation \
+    --distribution-id "$DIST_ID" \
+    --paths "/*" \
+    --query 'Invalidation.Id' --output text
+else
+  echo "=== 6+7. Skipping web build/upload (hosting stack not deployed) ==="
+fi
 
 echo
 echo "==============================================================="
-echo "Deploy complete."
+if [ "$HOSTING_OK" = true ]; then
+  echo "Deploy complete."
+else
+  echo "Deploy partially complete — hosting stack failed."
+fi
 echo
-echo "Site URL:        https://$DIST_DOMAIN"
+if [ -n "$DIST_DOMAIN" ]; then
+  echo "Site URL:        https://$DIST_DOMAIN"
+fi
 echo "Lambda URL:      $LAMBDA_URL  (AWS_IAM auth, SigV4 required)"
 echo "Identity Pool:   $IDENTITY_POOL"
 echo "Ledger table:    $LEDGER_TABLE"
