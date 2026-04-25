@@ -1,7 +1,10 @@
-import { AuthProvider, useAuth, SignInPanel } from './auth/index.js';
+import { useMemo } from 'react';
+import { AuthProvider, useAuth, SignInPanel, PlayerOnly, PayerOnly } from './auth/index.js';
 import { config, isConfigComplete } from './config.js';
+import { FunctionUrlClient } from './data/function-url.js';
 import { useLedger } from './data/use-ledger.js';
 import { AgreementPage } from './views/AgreementPage.js';
+import { PlayerView } from './views/PlayerView.js';
 
 function ConfigMissing() {
   return (
@@ -19,6 +22,14 @@ function SignedInShell() {
     region: config.region,
     tableName: config.ledgerTable,
   });
+  const lambda = useMemo(() => {
+    if (!credentials || !config.lambdaUrl) return null;
+    return new FunctionUrlClient({
+      baseUrl: config.lambdaUrl,
+      region: config.region,
+      credentialsProvider: async () => credentials,
+    });
+  }, [credentials]);
 
   return (
     <main>
@@ -30,10 +41,13 @@ function SignedInShell() {
         </div>
       </header>
       {ledger && role && <AgreementPage ledger={ledger} role={role} />}
-      <section>
-        <h2>{role === 'PAYER' ? 'Payer view' : 'Player view'}</h2>
-        <p>Achievements, payments, and inbox land in Steps 10 + 11.</p>
-      </section>
+      <PlayerOnly>{ledger && lambda && <PlayerView ledger={ledger} lambda={lambda} />}</PlayerOnly>
+      <PayerOnly>
+        <section>
+          <h2>Payer view</h2>
+          <p>Inbox + record payment land in Step 11.</p>
+        </section>
+      </PayerOnly>
     </main>
   );
 }
