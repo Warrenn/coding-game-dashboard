@@ -322,7 +322,7 @@ CodinGame calls.
 - [x] Step 3 — CloudFormation: storage + identity — completed 2026-04-25
 - [x] Step 4 — CloudFormation: hosting — completed 2026-04-25
 - [x] Step 5 — CloudFormation: lambda + sns — completed 2026-04-25
-- [ ] Step 6 — Lambda: CodinGame fetcher
+- [x] Step 6 — Lambda: CodinGame fetcher — completed 2026-04-25
 - [ ] Step 7 — Web: shared types + AWS clients
 - [ ] Step 8 — Web: auth shell
 - [ ] Step 9 — Web: Agreement page (admin/payer-only edit)

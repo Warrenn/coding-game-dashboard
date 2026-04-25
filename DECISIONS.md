@@ -59,8 +59,7 @@ reasoning, and how to revert if the user disagrees on return.
 
 ## Lambda code deployment
 
-- **2026-04-25** — `infra/lambda-sns.yaml` ships an inline placeholder (returns
-  501) via `Code.ZipFile`. The real esbuild bundle is uploaded post-deploy
+- **2026-04-25** — `infra/lambda-sns.yaml` ships an inline placeholder (returns 501) via `Code.ZipFile`. The real esbuild bundle is uploaded post-deploy
   via `aws lambda update-function-code`. This decouples stack creation from
   code build and lets the template stand alone for review. The Step 14
   deploy script does: stack-deploy → lambda-build → lambda-update-code.

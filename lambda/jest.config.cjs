@@ -6,6 +6,7 @@ module.exports = {
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@cgd/shared$': '<rootDir>/../shared/src/index.ts',
+    '^@cgd/mock-codingame$': '<rootDir>/../tools/mock-codingame/src/server.ts',
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', { useESM: true, tsconfig: { module: 'esnext' } }],
