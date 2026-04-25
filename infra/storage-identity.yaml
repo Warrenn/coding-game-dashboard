@@ -1,0 +1,219 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  coding-game-dashboard — DynamoDB single-table ledger plus a Cognito
+  Identity Pool federated with Google. Two role-mapped roles (PayerRole,
+  PlayerRole) gated on the Google email claim. No default authenticated
+  role: deny-by-default for any user whose email does not match.
+
+Parameters:
+  AppName:
+    Type: String
+    Default: coding-game-dashboard
+    AllowedPattern: ^[a-z][a-z0-9-]{2,30}[a-z0-9]$
+    Description: Lower-case slug used as a prefix for created resources.
+
+  PayerEmail:
+    Type: String
+    AllowedPattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+    Description: Google account email of the payer/admin (claim is checked verbatim).
+
+  PlayerEmail:
+    Type: String
+    AllowedPattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+    Description: Google account email of the player.
+
+  GoogleClientId:
+    Type: String
+    Default: REPLACE_BEFORE_AUTH_USE
+    AllowedPattern: ^[A-Za-z0-9_-]+(\.apps\.googleusercontent\.com)?$
+    Description: >
+      Google OAuth 2.0 Web Client ID, e.g. 1234567890-abc.apps.googleusercontent.com.
+      The default placeholder lets the stack deploy for IAM/DDB review; sign-in
+      will fail until this is replaced via stack update.
+
+Resources:
+  LedgerTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AppName}-ledger'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      DeletionProtectionEnabled: false # MVP: allow easy teardown. Flip to true post-launch.
+
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub '${AppName}-identity'
+      AllowUnauthenticatedIdentities: false
+      SupportedLoginProviders:
+        accounts.google.com: !Ref GoogleClientId
+
+  PayerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-payer'
+      Description: Cognito-assumed role for the payer/admin. Read-all on table; writes scoped to AGREEMENT and PAYMENT partitions.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud': !Ref IdentityPool
+              ForAnyValue:StringLike:
+                'cognito-identity.amazonaws.com:amr': authenticated
+      Policies:
+        - PolicyName: ledger-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                Resource: !GetAtt LedgerTable.Arn
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys:
+                      - AGREEMENT
+                      - SNAPSHOT
+                      - ACHIEVEMENT
+                      - REQUEST
+                      - PAYMENT
+                      - INBOX#PAYER
+        - PolicyName: ledger-write-payer
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:BatchWriteItem
+                Resource: !GetAtt LedgerTable.Arn
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys:
+                      - AGREEMENT
+                      - PAYMENT
+
+  PlayerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-player'
+      Description: Cognito-assumed role for the player. Read-all on table; writes scoped to REQUEST partition.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud': !Ref IdentityPool
+              ForAnyValue:StringLike:
+                'cognito-identity.amazonaws.com:amr': authenticated
+      Policies:
+        - PolicyName: ledger-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                Resource: !GetAtt LedgerTable.Arn
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys:
+                      - AGREEMENT
+                      - SNAPSHOT
+                      - ACHIEVEMENT
+                      - REQUEST
+                      - PAYMENT
+                      - INBOX#PLAYER
+        - PolicyName: ledger-write-player
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource: !GetAtt LedgerTable.Arn
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys:
+                      - REQUEST
+
+  # Role mapping:
+  #   - email == PayerEmail   → PayerRole
+  #   - email == PlayerEmail  → PlayerRole
+  #   - else                  → deny (AmbiguousRoleResolution=Deny + no default)
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles: {}
+      RoleMappings:
+        accounts.google.com:
+          IdentityProvider: accounts.google.com
+          Type: Rules
+          AmbiguousRoleResolution: Deny
+          RulesConfiguration:
+            Rules:
+              - Claim: email
+                MatchType: Equals
+                Value: !Ref PayerEmail
+                RoleARN: !GetAtt PayerRole.Arn
+              - Claim: email
+                MatchType: Equals
+                Value: !Ref PlayerEmail
+                RoleARN: !GetAtt PlayerRole.Arn
+
+Outputs:
+  LedgerTableName:
+    Description: DynamoDB single-table name
+    Value: !Ref LedgerTable
+    Export:
+      Name: !Sub '${AppName}-LedgerTableName'
+  LedgerTableArn:
+    Value: !GetAtt LedgerTable.Arn
+    Export:
+      Name: !Sub '${AppName}-LedgerTableArn'
+  IdentityPoolId:
+    Value: !Ref IdentityPool
+    Export:
+      Name: !Sub '${AppName}-IdentityPoolId'
+  PayerRoleArn:
+    Value: !GetAtt PayerRole.Arn
+    Export:
+      Name: !Sub '${AppName}-PayerRoleArn'
+  PlayerRoleArn:
+    Value: !GetAtt PlayerRole.Arn
+    Export:
+      Name: !Sub '${AppName}-PlayerRoleArn'

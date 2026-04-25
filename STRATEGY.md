@@ -319,7 +319,7 @@ CodinGame calls.
 
 - [x] Step 1 — Scaffold repo layout — completed 2026-04-25
 - [x] Step 2 — Mock CodinGame server with captured fixtures — completed 2026-04-25
-- [ ] Step 3 — CloudFormation: storage + identity
+- [x] Step 3 — CloudFormation: storage + identity — completed 2026-04-25
 - [ ] Step 4 — CloudFormation: hosting
 - [ ] Step 5 — CloudFormation: lambda + sns
 - [ ] Step 6 — Lambda: CodinGame fetcher

@@ -42,6 +42,21 @@ reasoning, and how to revert if the user disagrees on return.
   directly. Consumers pick up TS source. Avoids a separate build step in dev
   and keeps types live across boundaries.
 
+## CloudFormation deploy strategy
+
+- **2026-04-25** — Steps 3–5 author CFN templates as separate files but do NOT
+  deploy them individually. Single deploy happens at Step 14 with a combined
+  template (or nested stacks). This avoids orphaned named-IAM resources and
+  duplicate stack collisions. Validation (validate-template + cfn-lint) is
+  the TDD substitute for IaC per Gate 4. Revert: deploy each template
+  separately as developed (will require renaming roles to avoid collisions).
+- **2026-04-25** — `GoogleClientId` parameter has a placeholder default
+  (`REPLACE_BEFORE_AUTH_USE`). The Identity Pool resource accepts this; only
+  Google sign-in itself fails until the value is replaced. Lets us deploy
+  for IAM/DDB review without needing Google credentials in this autonomous
+  session. The user must create a Google OAuth Client ID and update the
+  parameter via `aws cloudformation update-stack` before sign-in works.
+
 ## Reverting
 
 If a decision is wrong, the simplest path is `git revert` the commit that
