@@ -1,0 +1,7 @@
+{
+  "handle": "mock-active",
+  "userId": 9000001,
+  "capturedAt": "2026-04-25T00:00:00.000Z",
+  "synthetic": true,
+  "scenario": "full population — multiple badge levels, mid rank, mid XP"
+}

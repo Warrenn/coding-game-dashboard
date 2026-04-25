@@ -1,0 +1,18 @@
+{
+  "achievementCount": 12,
+  "codingamePointsRankingDto": null,
+  "codingamer": {
+    "category": "STUDENT",
+    "countryId": "US",
+    "formValues": {},
+    "level": 18,
+    "onlineSince": 1620000000000,
+    "pseudo": "mock-active",
+    "publicHandle": "mock-active",
+    "rank": 5000,
+    "userId": 9000001,
+    "xp": 12500
+  },
+  "codingamerPoints": 1500,
+  "xpThresholds": [0, 100, 300, 1000, 3000, 10000, 30000]
+}
