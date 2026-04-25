@@ -327,7 +327,7 @@ CodinGame calls.
 - [x] Step 8 — Web: auth shell — completed 2026-04-25
 - [x] Step 9 — Web: Agreement page (admin/payer-only edit) — completed 2026-04-25
 - [x] Step 10 — Web: Player view — completed 2026-04-25
-- [ ] Step 11 — Web: Payer view
+- [x] Step 11 — Web: Payer view — completed 2026-04-25
 - [ ] Step 12 — Theme pass
 - [ ] Step 13 — Security hardening pass
 - [ ] Step 14 — Deploy + smoke test

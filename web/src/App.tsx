@@ -5,6 +5,7 @@ import { FunctionUrlClient } from './data/function-url.js';
 import { useLedger } from './data/use-ledger.js';
 import { AgreementPage } from './views/AgreementPage.js';
 import { PlayerView } from './views/PlayerView.js';
+import { PayerView } from './views/PayerView.js';
 
 function ConfigMissing() {
   return (
@@ -42,12 +43,7 @@ function SignedInShell() {
       </header>
       {ledger && role && <AgreementPage ledger={ledger} role={role} />}
       <PlayerOnly>{ledger && lambda && <PlayerView ledger={ledger} lambda={lambda} />}</PlayerOnly>
-      <PayerOnly>
-        <section>
-          <h2>Payer view</h2>
-          <p>Inbox + record payment land in Step 11.</p>
-        </section>
-      </PayerOnly>
+      <PayerOnly>{ledger && <PayerView ledger={ledger} />}</PayerOnly>
     </main>
   );
 }
