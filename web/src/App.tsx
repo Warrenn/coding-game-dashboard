@@ -1,5 +1,7 @@
-import { AuthProvider, useAuth, PayerOnly, PlayerOnly, SignInPanel } from './auth/index.js';
+import { AuthProvider, useAuth, SignInPanel } from './auth/index.js';
 import { config, isConfigComplete } from './config.js';
+import { useLedger } from './data/use-ledger.js';
+import { AgreementPage } from './views/AgreementPage.js';
 
 function ConfigMissing() {
   return (
@@ -11,7 +13,13 @@ function ConfigMissing() {
 }
 
 function SignedInShell() {
-  const { user, role, signOut } = useAuth();
+  const { user, role, credentials, signOut } = useAuth();
+  const ledger = useLedger({
+    credentials,
+    region: config.region,
+    tableName: config.ledgerTable,
+  });
+
   return (
     <main>
       <header>
@@ -21,18 +29,11 @@ function SignedInShell() {
           <button onClick={signOut}>sign out</button>
         </div>
       </header>
-      <PayerOnly>
-        <section>
-          <h2>Payer view</h2>
-          <p>Agreement, payments, request inbox land in Steps 9 + 11.</p>
-        </section>
-      </PayerOnly>
-      <PlayerOnly>
-        <section>
-          <h2>Player view</h2>
-          <p>Achievements + payment requests land in Step 10.</p>
-        </section>
-      </PlayerOnly>
+      {ledger && role && <AgreementPage ledger={ledger} role={role} />}
+      <section>
+        <h2>{role === 'PAYER' ? 'Payer view' : 'Player view'}</h2>
+        <p>Achievements, payments, and inbox land in Steps 10 + 11.</p>
+      </section>
     </main>
   );
 }
