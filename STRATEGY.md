@@ -321,7 +321,7 @@ CodinGame calls.
 - [x] Step 2 — Mock CodinGame server with captured fixtures — completed 2026-04-25
 - [x] Step 3 — CloudFormation: storage + identity — completed 2026-04-25
 - [x] Step 4 — CloudFormation: hosting — completed 2026-04-25
-- [ ] Step 5 — CloudFormation: lambda + sns
+- [x] Step 5 — CloudFormation: lambda + sns — completed 2026-04-25
 - [ ] Step 6 — Lambda: CodinGame fetcher
 - [ ] Step 7 — Web: shared types + AWS clients
 - [ ] Step 8 — Web: auth shell

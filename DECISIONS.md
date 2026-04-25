@@ -57,6 +57,27 @@ reasoning, and how to revert if the user disagrees on return.
   session. The user must create a Google OAuth Client ID and update the
   parameter via `aws cloudformation update-stack` before sign-in works.
 
+## Lambda code deployment
+
+- **2026-04-25** — `infra/lambda-sns.yaml` ships an inline placeholder (returns
+  501) via `Code.ZipFile`. The real esbuild bundle is uploaded post-deploy
+  via `aws lambda update-function-code`. This decouples stack creation from
+  code build and lets the template stand alone for review. The Step 14
+  deploy script does: stack-deploy → lambda-build → lambda-update-code.
+- **2026-04-25** — Lambda Function URL CORS `AllowOrigins: '*'` at MVP. With
+  `AuthType: AWS_IAM`, every request must be SigV4-signed by Cognito-issued
+  credentials; CORS does not bypass auth. Tighten to the actual CloudFront
+  domain in Step 13/14 once known.
+- **2026-04-25** — SNS email subscription requires recipient confirmation.
+  PayerEmail will receive a confirmation link from AWS SNS at deploy time;
+  no payment-request emails flow until that link is clicked. Documented for
+  the user to handle on return.
+- **2026-04-25** — Lambda runs on `arm64` (Graviton). Same free-tier limits
+  as x86_64 but lower per-ms cost beyond free tier and slightly faster cold
+  starts on Node 20 (per AWS benchmarks). Revert to `x86_64` only if a Lambda
+  layer or native dep doesn't exist for arm64 (none anticipated for this
+  workload).
+
 ## Reverting
 
 If a decision is wrong, the simplest path is `git revert` the commit that
