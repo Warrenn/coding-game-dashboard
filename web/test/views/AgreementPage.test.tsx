@@ -27,10 +27,10 @@ function fakeLedger(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('AgreementPage — player (read-only)', () => {
-  it('renders handle, currency, and rule list', async () => {
+  it('renders handle, currency notice, and rule list', async () => {
     render(<AgreementPage ledger={fakeLedger()} role="PLAYER" />);
     await waitFor(() => expect(screen.getByText('mock-active')).toBeInTheDocument());
-    expect(screen.getByText('USD')).toBeInTheDocument();
+    expect(screen.getByText('ZAR')).toBeInTheDocument();
     expect(screen.getByText(/Badge GOLD/)).toBeInTheDocument();
   });
 
@@ -43,11 +43,14 @@ describe('AgreementPage — player (read-only)', () => {
 });
 
 describe('AgreementPage — payer (edit)', () => {
-  it('shows the edit form pre-filled with existing values', async () => {
+  it('shows the edit form pre-filled with existing handle', async () => {
     render(<AgreementPage ledger={fakeLedger()} role="PAYER" />);
     await waitFor(() => expect(screen.getByLabelText(/CodinGame handle/i)).toBeInTheDocument());
     expect(screen.getByLabelText(/CodinGame handle/i)).toHaveValue('mock-active');
-    expect(screen.getByLabelText(/Currency/i)).toHaveValue('USD');
+    // Currency is fixed to ZAR — no input rendered, just a static notice.
+    expect(screen.queryByLabelText(/^Currency/i)).not.toBeInTheDocument();
+    // ZAR is rendered inside a <strong>; assert that strong contains it.
+    expect(screen.getByText('ZAR')).toBeInTheDocument();
   });
 
   it('saves profile via ledger.putAgreementMeta', async () => {

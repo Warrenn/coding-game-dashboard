@@ -8,6 +8,7 @@ import type {
   PricingRule,
 } from '@cgd/shared';
 import { computeOutstandingLines, totals } from '../data/derived.js';
+import { APP_CURRENCY, formatMoney } from '../data/currency.js';
 import type { WebLedger } from '../data/ledger.js';
 
 interface PayerViewProps {
@@ -97,7 +98,7 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         paymentId: `pay-${now().getTime().toString(36)}`,
         paidAt,
         totalAmount: lineItems.reduce((s, li) => s + li.unitPriceAtPayment * li.quantity, 0),
-        currency: 'USD',
+        currency: APP_CURRENCY,
         note: note || undefined,
         lineItems,
       };
@@ -122,10 +123,10 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
       <dl className="totals">
         <dt>Outstanding to player</dt>
         <dd>
-          {t.unpaidAmount.toFixed(2)} ({t.unpaidLines} item(s))
+          {formatMoney(t.unpaidAmount)} ({t.unpaidLines} item(s))
         </dd>
         <dt>Paid to date</dt>
-        <dd>{t.paidAmount.toFixed(2)}</dd>
+        <dd>{formatMoney(t.paidAmount)}</dd>
       </dl>
 
       <h3>Inbox</h3>
@@ -166,7 +167,7 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
                     />
                   </td>
                   <td>{l.title}</td>
-                  <td>{(l.currentUnitPrice ?? 0).toFixed(2)}</td>
+                  <td>{formatMoney(l.currentUnitPrice ?? 0)}</td>
                 </tr>
               ))}
             </tbody>
@@ -176,7 +177,7 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
             <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
           </label>
           <p>
-            Selected total: <strong>{selectedTotal.toFixed(2)}</strong>
+            Selected total: <strong>{formatMoney(selectedTotal)}</strong>
           </p>
           <button onClick={handleRecordPayment} disabled={recording || selected.size === 0}>
             {recording ? 'Recording…' : `Record payment (${selected.size} item(s))`}
@@ -191,7 +192,7 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         <ul>
           {state.payments.map((p) => (
             <li key={p.paymentId}>
-              {p.paidAt} — {p.totalAmount.toFixed(2)} {p.currency} ({p.lineItems.length} line(s))
+              {p.paidAt} — {formatMoney(p.totalAmount)} ({p.lineItems.length} line(s))
               {p.note && ` — ${p.note}`}
             </li>
           ))}

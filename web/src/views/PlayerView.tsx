@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { DetectedAchievement, PaymentRequest, PricingRule, Snapshot } from '@cgd/shared';
 import type { Payment } from '@cgd/shared';
 import { computeOutstandingLines, totals, type OutstandingLine } from '../data/derived.js';
+import { APP_CURRENCY, formatMoney } from '../data/currency.js';
 import type { WebLedger } from '../data/ledger.js';
 import type { FunctionUrlClient } from '../data/function-url.js';
 
@@ -91,14 +92,14 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
         requestedAt,
         achievementKeys: outstandingLines.map((l) => l.achievementKey),
         totalAmount,
-        currency: 'USD',
+        currency: APP_CURRENCY,
         status: 'PENDING',
       };
       await ledger.submitPaymentRequest(req);
       const res = await lambda.post('/notify-payment-request', {
         requestId,
         subject: `Payment request: ${outstandingLines.length} item(s)`,
-        message: `Player requested ${totalAmount} USD for ${outstandingLines.length} item(s)`,
+        message: `Player requested ${formatMoney(totalAmount)} for ${outstandingLines.length} item(s)`,
       });
       if (!res.ok) throw new Error(`notify failed: ${res.status}`);
       await reload();
@@ -131,10 +132,10 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
       <dl className="totals">
         <dt>Outstanding</dt>
         <dd>
-          {t.unpaidAmount.toFixed(2)} ({t.unpaidLines} item(s))
+          {formatMoney(t.unpaidAmount)} ({t.unpaidLines} item(s))
         </dd>
         <dt>Paid to date</dt>
-        <dd>{t.paidAmount.toFixed(2)}</dd>
+        <dd>{formatMoney(t.paidAmount)}</dd>
       </dl>
 
       {state.snapshot && (
@@ -165,10 +166,10 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
                 </td>
                 <td>
                   {l.paid
-                    ? l.paid.unitPriceAtPayment.toFixed(2)
+                    ? formatMoney(l.paid.unitPriceAtPayment)
                     : l.currentUnitPrice === null
                       ? '—'
-                      : l.currentUnitPrice.toFixed(2)}
+                      : formatMoney(l.currentUnitPrice)}
                 </td>
               </tr>
             ))}
@@ -183,7 +184,7 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
         <ul>
           {state.requests.map((r) => (
             <li key={r.requestId}>
-              {r.requestedAt} · {r.totalAmount} {r.currency} · {r.status}
+              {r.requestedAt} · {formatMoney(r.totalAmount)} · {r.status}
             </li>
           ))}
         </ul>

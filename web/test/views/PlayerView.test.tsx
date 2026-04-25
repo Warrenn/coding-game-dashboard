@@ -82,8 +82,8 @@ describe('PlayerView', () => {
     render(<PlayerView ledger={fakeLedger()} lambda={fakeLambda()} />);
     await waitFor(() => expect(screen.getByText('Gold A')).toBeInTheDocument());
     expect(screen.getByText('Bronze B')).toBeInTheDocument();
-    // Gold A → outstanding 10; Bronze B → unpriced (no rule)
-    expect(screen.getByText('10.00')).toBeInTheDocument();
+    // Gold A → outstanding 10 ZAR; Bronze B → unpriced (no rule)
+    expect(screen.getAllByText(/R[\s ]?10[.,]00/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/1 item\(s\)/).length).toBeGreaterThanOrEqual(1);
   });
 

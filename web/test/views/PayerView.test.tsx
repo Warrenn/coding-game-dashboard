@@ -53,7 +53,8 @@ describe('PayerView', () => {
   it('shows outstanding total and item count', async () => {
     render(<PayerView ledger={fakeLedger()} />);
     await waitFor(() => expect(screen.getByText(/2 item\(s\)/)).toBeInTheDocument());
-    expect(screen.getByText(/20\.00/)).toBeInTheDocument();
+    // ZAR formatted via Intl: "R 20,00" (en-ZA uses , decimal separator, NBSP after R)
+    expect(screen.getByText(/R[\s ]?20[.,]00/)).toBeInTheDocument();
   });
 
   it('renders inbox entries', async () => {

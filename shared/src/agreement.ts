@@ -37,7 +37,7 @@ export type PricingRule = z.infer<typeof PricingRuleSchema>;
 
 export const AgreementMetaSchema = z.object({
   handle: z.string().min(1),
-  currency: z.string().min(3).max(3).default('USD'),
+  currency: z.string().min(3).max(3).default('ZAR'),
   updatedAt: z.string(),
 });
 export type AgreementMeta = z.infer<typeof AgreementMetaSchema>;

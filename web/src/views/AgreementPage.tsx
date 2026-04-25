@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { AchievementLevel, AgreementMeta, PricingRule } from '@cgd/shared';
 import type { WebLedger } from '../data/ledger.js';
 import type { Role } from '../auth/types.js';
+import { APP_CURRENCY, formatMoney } from '../data/currency.js';
 
 interface AgreementPageProps {
   ledger: WebLedger;
@@ -23,7 +24,6 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
 
   // Local edit state (used only by PAYER role)
   const [handleField, setHandleField] = useState('');
-  const [currencyField, setCurrencyField] = useState('USD');
   const [newRuleLevel, setNewRuleLevel] = useState<AchievementLevel>('BRONZE');
   const [newRulePrice, setNewRulePrice] = useState('');
 
@@ -37,7 +37,6 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
         setRules(r);
         if (m) {
           setHandleField(m.handle);
-          setCurrencyField(m.currency);
         }
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'load-failed'))
@@ -57,7 +56,7 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
     try {
       const next: AgreementMeta = {
         handle: handleField.trim(),
-        currency: currencyField.trim().toUpperCase(),
+        currency: APP_CURRENCY,
         updatedAt: new Date().toISOString(),
       };
       await ledger.putAgreementMeta(next);
@@ -105,6 +104,9 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
       {error && <p role="alert">{error}</p>}
 
       <h3>Profile</h3>
+      <p>
+        Currency: <strong>{APP_CURRENCY}</strong> (fixed)
+      </p>
       {isPayer ? (
         <form onSubmit={saveMeta}>
           <label>
@@ -116,16 +118,6 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
               required
             />
           </label>
-          <label>
-            Currency{' '}
-            <input
-              value={currencyField}
-              onChange={(e) => setCurrencyField(e.target.value)}
-              maxLength={3}
-              minLength={3}
-              required
-            />
-          </label>
           <button type="submit" disabled={saving}>
             Save profile
           </button>
@@ -134,8 +126,6 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
         <dl>
           <dt>Handle</dt>
           <dd>{meta?.handle ?? '(not set)'}</dd>
-          <dt>Currency</dt>
-          <dd>{meta?.currency ?? 'USD'}</dd>
           <dt>Updated</dt>
           <dd>{meta?.updatedAt ?? '—'}</dd>
         </dl>
@@ -150,11 +140,11 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
             <li key={r.ruleId}>
               {r.kind === 'badge-level' ? (
                 <>
-                  Badge {r.level} → {r.unitPrice}
+                  Badge {r.level} → {formatMoney(r.unitPrice)}
                 </>
               ) : (
                 <>
-                  {r.kind} → {r.unitPrice}
+                  {r.kind} → {formatMoney(r.unitPrice)}
                 </>
               )}
             </li>
