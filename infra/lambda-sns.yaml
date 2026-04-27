@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  coding-game-dashboard — CodinGame fetch Lambda (Node 20) exposed via a
+  Function URL with AWS_IAM auth, plus an SNS topic that emails the payer
+  on payment-request events. Inline placeholder code; the real bundle is
+  uploaded by `aws lambda update-function-code` post-deploy.
+
+Parameters:
+  AppName:
+    Type: String
+    Default: coding-game-dashboard
+    AllowedPattern: ^[a-z][a-z0-9-]{2,30}[a-z0-9]$
+
+  PayerEmail:
+    Type: String
+    AllowedPattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+    Description: Email address subscribed to the payment-request SNS topic. Recipient must confirm via the link in the auto-sent SNS email.
+
+  LedgerTableName:
+    Type: String
+    Description: DynamoDB ledger table name (export from storage-identity stack).
+
+  LedgerTableArn:
+    Type: String
+    Description: DynamoDB ledger table ARN (export from storage-identity stack).
+
+  CodinGameBaseUrl:
+    Type: String
+    Default: https://www.codingame.com
+    Description: CodinGame base URL the Lambda calls. Override to a mock for local/integration tests.
+
+  AllowedOrigin:
+    Type: String
+    Default: '*'
+    Description: >
+      CORS AllowOrigin for the Function URL. AWS_IAM auth still requires SigV4
+      regardless of CORS, so * is safe here. Tighten to the CloudFront domain
+      via stack update in Step 14.
+
+Resources:
+  PaymentRequestTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AppName}-payment-requests'
+      DisplayName: coding-game payments
+      KmsMasterKeyId: alias/aws/sns
+
+  PaymentRequestSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref PayerEmail
+      TopicArn: !Ref PaymentRequestTopic
+
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AppName}-fetcher'
+      RetentionInDays: 14
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-fetcher-execution'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub '${LambdaLogGroup.Arn}:*'
+        - PolicyName: ledger
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource: !Ref LedgerTableArn
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys:
+                      - AGREEMENT
+                      - SNAPSHOT
+                      - ACHIEVEMENT
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource: !Ref LedgerTableArn
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys:
+                      - SNAPSHOT
+                      - ACHIEVEMENT
+                      - INBOX#PAYER
+                      - INBOX#PLAYER
+        - PolicyName: sns
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref PaymentRequestTopic
+
+  Fetcher:
+    Type: AWS::Lambda::Function
+    DependsOn: LambdaLogGroup
+    Properties:
+      FunctionName: !Sub '${AppName}-fetcher'
+      Runtime: nodejs20.x
+      Handler: handler.handler
+      MemorySize: 256
+      Timeout: 30
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Architectures: [arm64]
+      Environment:
+        Variables:
+          LEDGER_TABLE: !Ref LedgerTableName
+          PAYMENT_REQUEST_TOPIC_ARN: !Ref PaymentRequestTopic
+          CODINGAME_BASE_URL: !Ref CodinGameBaseUrl
+      Code:
+        ZipFile: |
+          // Placeholder — real bundle uploaded post-deploy by
+          // `aws lambda update-function-code`. Returns 501 so a hit during
+          // the gap between create-stack and code upload is loud, not silent.
+          // Filename inside the zip is index.js when ZipFile inline; the
+          // post-deploy bundle is handler.mjs (matches Handler config).
+          exports.handler = async () => ({
+            statusCode: 501,
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ error: 'lambda-bundle-not-uploaded' }),
+          });
+
+  FetcherUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt Fetcher.Arn
+      AuthType: AWS_IAM
+      InvokeMode: BUFFERED
+      Cors:
+        AllowOrigins: [!Ref AllowedOrigin]
+        AllowMethods: [GET, POST]
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Amz-Date
+          - X-Amz-Security-Token
+          - X-Amz-Content-Sha256
+          - X-Amz-User-Agent
+        AllowCredentials: false
+        MaxAge: 600
+
+  FetcherInvokePermissionPayer:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Fetcher.Arn
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: AWS_IAM
+
+Outputs:
+  FetcherFunctionName:
+    Value: !Ref Fetcher
+    Export:
+      Name: !Sub '${AppName}-FetcherFunctionName'
+  FetcherUrl:
+    Value: !GetAtt FetcherUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AppName}-FetcherUrl'
+  PaymentRequestTopicArn:
+    Value: !Ref PaymentRequestTopic
+    Export:
+      Name: !Sub '${AppName}-PaymentRequestTopicArn'

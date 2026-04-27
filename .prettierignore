@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+coverage
+**/coverage
+.vite
+**/.vite
+.cache
+package-lock.json
+**/package-lock.json

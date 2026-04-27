@@ -1,0 +1,7 @@
+{
+  "handle": "mock-empty",
+  "userId": 9000002,
+  "capturedAt": "2026-04-25T00:00:00.000Z",
+  "synthetic": true,
+  "scenario": "valid user, zero achievements, zero XP, very high rank"
+}

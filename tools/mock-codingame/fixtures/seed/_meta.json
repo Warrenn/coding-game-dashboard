@@ -1,0 +1,10 @@
+{
+  "handle": "ddc52ca3f0b26475dc7cc96153dbdf803390791",
+  "userId": 1970933,
+  "capturedAt": "2026-04-25T11:31:40.906Z",
+  "endpoints": [
+    "/services/CodinGamer/findCodingamePointsStatsByHandle",
+    "/services/Achievement/findByCodingamerId",
+    "/services/ClashOfCode/getClashRankByCodinGamerId"
+  ]
+}

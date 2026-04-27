@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  coding-game-dashboard — static hosting. Private S3 bucket served exclusively
+  through CloudFront via Origin Access Control. Response headers policy
+  enforces HSTS, strict CSP, X-Content-Type-Options, Referrer-Policy, and a
+  minimal Permissions-Policy.
+
+Parameters:
+  AppName:
+    Type: String
+    Default: coding-game-dashboard
+    AllowedPattern: ^[a-z][a-z0-9-]{2,30}[a-z0-9]$
+
+  LambdaFunctionUrlHost:
+    Type: String
+    Default: '*.lambda-url.us-east-1.on.aws'
+    Description: >
+      Hostname of the Lambda Function URL (or wildcard) for CSP connect-src.
+      Default wildcard works until the Lambda URL is known; tighten to the
+      exact host in Step 14 deploy via stack update.
+
+Resources:
+  StaticBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub '${AppName}-static-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AppName}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  SecurityHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub '${AppName}-security-headers'
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Preload: true
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ContentSecurityPolicy:
+            Override: true
+            ContentSecurityPolicy: !Sub >-
+              default-src 'self';
+              script-src 'self' https://accounts.google.com;
+              style-src 'self' 'unsafe-inline';
+              img-src 'self' data: https://*.googleusercontent.com;
+              font-src 'self';
+              connect-src 'self' https://cognito-identity.${AWS::Region}.amazonaws.com
+              https://dynamodb.${AWS::Region}.amazonaws.com
+              https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com
+              https://${LambdaFunctionUrlHost};
+              frame-src https://accounts.google.com;
+              frame-ancestors 'none';
+              form-action 'self';
+              base-uri 'self';
+              object-src 'none';
+              upgrade-insecure-requests
+        CustomHeadersConfig:
+          Items:
+            - Header: Permissions-Policy
+              Value: 'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()'
+              Override: true
+            - Header: Cross-Origin-Opener-Policy
+              Value: same-origin
+              Override: true
+            - Header: Cross-Origin-Resource-Policy
+              Value: same-origin
+              Override: true
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub '${AppName} static site'
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: s3-origin
+            DomainName: !GetAtt StaticBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+        DefaultCacheBehavior:
+          TargetOriginId: s3-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          # AWS managed: CachingOptimized
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          # AWS managed: CORS-S3Origin
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
+          ResponseHeadersPolicyId: !Ref SecurityHeadersPolicy
+        # SPA routing: missing keys (403/404 from S3) serve index.html with 200.
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 60
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 60
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+          MinimumProtocolVersion: TLSv1.2_2021
+
+  StaticBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${StaticBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt StaticBucket.Arn
+              - !Sub '${StaticBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+Outputs:
+  StaticBucketName:
+    Value: !Ref StaticBucket
+    Export:
+      Name: !Sub '${AppName}-StaticBucketName'
+  DistributionId:
+    Value: !Ref Distribution
+    Export:
+      Name: !Sub '${AppName}-DistributionId'
+  DistributionDomainName:
+    Value: !GetAtt Distribution.DomainName
+    Export:
+      Name: !Sub '${AppName}-DistributionDomainName'
