@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  coding-game-dashboard — TEMPORARY hosting using S3 REST endpoint over HTTPS
+  while AWS::CloudFront::Distribution creation is gated on this account.
+  Public-read bucket; only static JS/HTML/CSS; no application data exposed.
+  Replace with infra/hosting.yaml (CloudFront + OAC) once the account is
+  unblocked — see DEPLOY.md.
+
+Parameters:
+  AppName:
+    Type: String
+    Default: coding-game-dashboard
+    AllowedPattern: ^[a-z][a-z0-9-]{2,30}[a-z0-9]$
+
+Resources:
+  StaticBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub '${AppName}-static-${AWS::AccountId}'
+      # NOTE: PublicAccessBlock relaxed only for the bucket-policy-grant case.
+      # We still block ACL-based public access; only an explicit bucket policy
+      # can grant read.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+            AllowedHeaders: ['*']
+            MaxAge: 3600
+
+  StaticBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub '${StaticBucket.Arn}/*'
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt StaticBucket.Arn
+              - !Sub '${StaticBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+Outputs:
+  StaticBucketName:
+    Value: !Ref StaticBucket
+    Export:
+      Name: !Sub '${AppName}-StaticBucketName'
+  StaticSiteUrl:
+    Description: HTTPS URL for the index.html object via the S3 REST endpoint
+    Value: !Sub 'https://${StaticBucket.RegionalDomainName}/index.html'
+    Export:
+      Name: !Sub '${AppName}-StaticSiteUrl'
+  StaticOrigin:
+    Description: Origin string to add to Google OAuth authorized JS origins
+    Value: !Sub 'https://${StaticBucket.RegionalDomainName}'
