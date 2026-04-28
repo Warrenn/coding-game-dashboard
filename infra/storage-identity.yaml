@@ -121,12 +121,14 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              # AWS docs say lambda:InvokeFunctionUrl is enough, but live
+              # auth on Function URL with AWS_IAM only succeeds when
+              # lambda:InvokeFunction is also granted. Both, defensively.
               - Effect: Allow
-                Action: lambda:InvokeFunctionUrl
+                Action:
+                  - lambda:InvokeFunctionUrl
+                  - lambda:InvokeFunction
                 Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-fetcher'
-                Condition:
-                  StringEquals:
-                    'lambda:FunctionUrlAuthType': AWS_IAM
 
   PlayerRole:
     Type: AWS::IAM::Role
@@ -183,12 +185,14 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              # AWS docs say lambda:InvokeFunctionUrl is enough, but live
+              # auth on Function URL with AWS_IAM only succeeds when
+              # lambda:InvokeFunction is also granted. Both, defensively.
               - Effect: Allow
-                Action: lambda:InvokeFunctionUrl
+                Action:
+                  - lambda:InvokeFunctionUrl
+                  - lambda:InvokeFunction
                 Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-fetcher'
-                Condition:
-                  StringEquals:
-                    'lambda:FunctionUrlAuthType': AWS_IAM
 
   # Role mapping:
   #   - email == PayerEmail   → PayerRole
