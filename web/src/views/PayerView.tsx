@@ -140,33 +140,67 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
     }
   }, [selected, outstanding, ledger, now, note, state.payments, state.requests, reload]);
 
+  // Dismissing a payer-side inbox entry also cancels the linked REQUEST so
+  // the player gets visible feedback (their request flips PENDING → CANCELLED).
   const dismissInbox = useCallback(
-    async (eventId: string) => {
+    async (eventId: string, refId?: string | null) => {
       setError(null);
       try {
         await ledger.deleteInboxEntry('PAYER', eventId);
-        setState((s) => ({ ...s, inbox: s.inbox.filter((e) => e.eventId !== eventId) }));
+        if (refId) {
+          const linked = state.requests.find(
+            (r) => r.requestId === refId && r.status === 'PENDING',
+          );
+          if (linked) await ledger.setPaymentRequestStatus(linked, 'CANCELLED');
+        }
+        setState((s) => ({
+          ...s,
+          inbox: s.inbox.filter((e) => e.eventId !== eventId),
+          requests: s.requests.map((r) =>
+            r.requestId === refId && r.status === 'PENDING' ? { ...r, status: 'CANCELLED' } : r,
+          ),
+        }));
       } catch (e) {
         setError(e instanceof Error ? e.message : 'dismiss-failed');
       }
     },
-    [ledger],
+    [ledger, state.requests],
   );
 
   const dismissAllInbox = useCallback(async () => {
     if (state.inbox.length === 0) return;
-    if (!confirm(`Dismiss all ${state.inbox.length} inbox notifications?`)) return;
+    if (
+      !confirm(
+        `Dismiss all ${state.inbox.length} inbox notifications? Linked PENDING requests are CANCELLED.`,
+      )
+    )
+      return;
     setError(null);
     try {
       await ledger.deleteInboxEntries(
         'PAYER',
         state.inbox.map((e) => e.eventId),
       );
-      setState((s) => ({ ...s, inbox: [] }));
+      const refIds = new Set(
+        state.inbox.map((e) => e.refId).filter((x): x is string => Boolean(x)),
+      );
+      const toCancel = state.requests.filter(
+        (r) => r.status === 'PENDING' && refIds.has(r.requestId),
+      );
+      for (const r of toCancel) {
+        await ledger.setPaymentRequestStatus(r, 'CANCELLED');
+      }
+      setState((s) => ({
+        ...s,
+        inbox: [],
+        requests: s.requests.map((r) =>
+          refIds.has(r.requestId) && r.status === 'PENDING' ? { ...r, status: 'CANCELLED' } : r,
+        ),
+      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'dismiss-all-failed');
     }
-  }, [ledger, state.inbox]);
+  }, [ledger, state.inbox, state.requests]);
 
   if (state.loading) return <p>Loading…</p>;
 
@@ -206,7 +240,7 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
               <button
                 type="button"
                 aria-label={`dismiss-${e.eventId}`}
-                onClick={() => dismissInbox(e.eventId)}
+                onClick={() => dismissInbox(e.eventId, e.refId)}
               >
                 Dismiss
               </button>
