@@ -27,6 +27,4 @@ export interface AuthContextValue extends AuthState {
 export interface AuthConfig {
   region: string;
   identityPoolId: string;
-  payerEmail: string;
-  playerEmail: string;
 }

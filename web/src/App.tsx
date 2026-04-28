@@ -1,22 +1,13 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth, SignInPanel, PlayerOnly, PayerOnly } from './auth/index.js';
-import { config, isConfigComplete } from './config.js';
+import { loadConfig, type AppConfig } from './config.js';
 import { FunctionUrlClient } from './data/function-url.js';
 import { useLedger } from './data/use-ledger.js';
 import { AgreementPage } from './views/AgreementPage.js';
 import { PlayerView } from './views/PlayerView.js';
 import { PayerView } from './views/PayerView.js';
 
-function ConfigMissing() {
-  return (
-    <main>
-      <h1>coding-game dashboard</h1>
-      <p>Configuration is incomplete. Set VITE_* env vars and rebuild.</p>
-    </main>
-  );
-}
-
-function SignedInShell() {
+function SignedInShell({ config }: { config: AppConfig }) {
   const { user, role, credentials, signOut } = useAuth();
   const ledger = useLedger({
     credentials,
@@ -30,7 +21,7 @@ function SignedInShell() {
       region: config.region,
       credentialsProvider: async () => credentials,
     });
-  }, [credentials]);
+  }, [credentials, config.lambdaUrl, config.region]);
 
   return (
     <main>
@@ -48,7 +39,7 @@ function SignedInShell() {
   );
 }
 
-function Inner() {
+function Inner({ config }: { config: AppConfig }) {
   const { status } = useAuth();
   if (status !== 'signed-in') {
     return (
@@ -58,14 +49,40 @@ function Inner() {
       </main>
     );
   }
-  return <SignedInShell />;
+  return <SignedInShell config={config} />;
 }
 
 export function App() {
-  if (!isConfigComplete()) return <ConfigMissing />;
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadConfig()
+      .then(setConfig)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'config-load-failed'));
+  }, []);
+
+  if (error) {
+    return (
+      <main>
+        <h1>coding-game dashboard</h1>
+        <p role="alert">Failed to load /config.json: {error}</p>
+      </main>
+    );
+  }
+
+  if (!config) {
+    return (
+      <main>
+        <h1>coding-game dashboard</h1>
+        <p>Loading…</p>
+      </main>
+    );
+  }
+
   return (
-    <AuthProvider config={config}>
-      <Inner />
+    <AuthProvider config={{ region: config.region, identityPoolId: config.identityPoolId }}>
+      <Inner config={config} />
     </AuthProvider>
   );
 }
