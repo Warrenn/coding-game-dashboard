@@ -34,9 +34,10 @@ function SignedInShell({ config }: { config: AppConfig }) {
           <button onClick={signOut}>sign out</button>
         </div>
       </header>
+      {/* Payer wants Ledger first; player wants Agreement first. */}
+      <PayerOnly>{ledger && <PayerView ledger={ledger} />}</PayerOnly>
       {ledger && role && <AgreementPage ledger={ledger} role={role} />}
       <PlayerOnly>{ledger && lambda && <PlayerView ledger={ledger} lambda={lambda} />}</PlayerOnly>
-      <PayerOnly>{ledger && <PayerView ledger={ledger} />}</PayerOnly>
     </main>
   );
 }

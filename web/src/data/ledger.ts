@@ -129,6 +129,15 @@ export class WebLedger {
     );
   }
 
+  async deletePayment(payment: Payment): Promise<void> {
+    await this.db.send(
+      new DeleteCommand({
+        TableName: this.table,
+        Key: { PK: 'PAYMENT', SK: `${payment.paidAt}#${payment.paymentId}` },
+      }),
+    );
+  }
+
   // ---------- Requests (player-write) ----------
 
   async listRequests(): Promise<PaymentRequest[]> {

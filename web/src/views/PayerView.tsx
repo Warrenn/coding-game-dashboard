@@ -195,6 +195,51 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
     [ledger, state.requests, now],
   );
 
+  // Undo a previously recorded payment. Walks PAID requests and flips any
+  // that are no longer fully covered by remaining payments back to PENDING,
+  // then drops a player inbox note.
+  const handleUndoPayment = useCallback(
+    async (payment: Payment) => {
+      const ok = await modal.confirm({
+        title: 'Undo this payment?',
+        message: `${formatMoney(payment.totalAmount)} across ${payment.lineItems.length} item(s) will be removed. Any requests previously marked PAID by this payment will return to PENDING.`,
+        confirmLabel: 'Undo payment',
+        danger: true,
+      });
+      if (!ok) return;
+      setError(null);
+      try {
+        await ledger.deletePayment(payment);
+
+        const remaining = state.payments.filter((p) => p.paymentId !== payment.paymentId);
+        const paidKeys = new Set<string>();
+        for (const p of remaining) {
+          for (const li of p.lineItems) paidKeys.add(li.achievementKey);
+        }
+        for (const r of state.requests) {
+          if (r.status !== 'PAID') continue;
+          if (!r.achievementKeys.every((k) => paidKeys.has(k))) {
+            await ledger.setPaymentRequestStatus(r, 'PENDING');
+          }
+        }
+        await ledger.writeInbox('PLAYER', {
+          eventId: `${now().toISOString()}#undo-${payment.paymentId}`,
+          subject: 'Payment was undone',
+          message: `Payer reversed a payment of ${formatMoney(payment.totalAmount)} (${payment.lineItems.length} item(s)). Any matching requests have returned to PENDING.`,
+          refId: payment.paymentId,
+        });
+
+        toast.success('Payment undone.');
+        await reload();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'undo-failed';
+        setError(msg);
+        toast.error(`Undo failed: ${msg}`);
+      }
+    },
+    [ledger, modal, now, state.payments, state.requests, toast, reload],
+  );
+
   const dismissAllInbox = useCallback(async () => {
     if (state.inbox.length === 0) return;
     const ok = await modal.confirm({
@@ -256,37 +301,6 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         <dd>{formatMoney(t.paidAmount)}</dd>
       </dl>
 
-      <h3>
-        Inbox{' '}
-        {state.inbox.length > 0 && (
-          <button
-            type="button"
-            onClick={dismissAllInbox}
-            style={{ marginLeft: '0.6rem', fontSize: '0.8rem' }}
-          >
-            Dismiss all ({state.inbox.length})
-          </button>
-        )}
-      </h3>
-      {state.inbox.length === 0 ? (
-        <p>No payment requests pending.</p>
-      ) : (
-        <ul>
-          {state.inbox.map((e) => (
-            <li key={e.eventId}>
-              <strong>{e.subject}</strong> — {e.message}{' '}
-              <button
-                type="button"
-                aria-label={`dismiss-${e.eventId}`}
-                onClick={() => dismissInbox(e.eventId, e.refId)}
-              >
-                Dismiss
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
       <h3>Record payment</h3>
       {outstanding.length === 0 ? (
         <p>Nothing outstanding.</p>
@@ -330,6 +344,37 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         </>
       )}
 
+      <h3>
+        Inbox{' '}
+        {state.inbox.length > 0 && (
+          <button
+            type="button"
+            onClick={dismissAllInbox}
+            style={{ marginLeft: '0.6rem', fontSize: '0.8rem' }}
+          >
+            Dismiss all ({state.inbox.length})
+          </button>
+        )}
+      </h3>
+      {state.inbox.length === 0 ? (
+        <p>No payment requests pending.</p>
+      ) : (
+        <ul>
+          {state.inbox.map((e) => (
+            <li key={e.eventId}>
+              <strong>{e.subject}</strong> — {e.message}{' '}
+              <button
+                type="button"
+                aria-label={`dismiss-${e.eventId}`}
+                onClick={() => dismissInbox(e.eventId, e.refId)}
+              >
+                Dismiss
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <h3>Payment history</h3>
       {state.payments.length === 0 ? (
         <p>No payments recorded yet.</p>
@@ -338,7 +383,14 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
           {state.payments.map((p) => (
             <li key={p.paymentId}>
               {p.paidAt} — {formatMoney(p.totalAmount)} ({p.lineItems.length} line(s))
-              {p.note && ` — ${p.note}`}
+              {p.note && ` — ${p.note}`}{' '}
+              <button
+                type="button"
+                aria-label={`undo-${p.paymentId}`}
+                onClick={() => handleUndoPayment(p)}
+              >
+                Undo
+              </button>
             </li>
           ))}
         </ul>
