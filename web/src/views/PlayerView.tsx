@@ -3,6 +3,7 @@ import type { DetectedAchievement, PaymentRequest, PricingRule, Snapshot } from 
 import type { Payment } from '@cgd/shared';
 import { computeOutstandingLines, totals, type OutstandingLine } from '../data/derived.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
+import { findDuplicatePendingRequest } from '../data/duplicates.js';
 import type { WebLedger } from '../data/ledger.js';
 import type { FunctionUrlClient } from '../data/function-url.js';
 
@@ -36,6 +37,7 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
   const [refreshing, setRefreshing] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setError(null);
@@ -99,36 +101,78 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
   const t = totals(lines);
   const outstandingLines = lines.filter((l) => !l.paid && l.currentUnitPrice !== null);
 
+  // Send (or re-send) the SNS notification for a request id without writing
+  // a new REQUEST row. Used both by the normal submit flow and by the
+  // "Re-notify" action on a duplicate.
+  const sendNotify = useCallback(
+    async (requestId: string, lineCount: number, totalAmount: number) => {
+      const res = await lambda.post('/notify-payment-request', {
+        requestId,
+        subject: `Payment request: ${lineCount} item(s)`,
+        message: `Player requested ${formatMoney(totalAmount)} for ${lineCount} item(s)`,
+      });
+      if (!res.ok) throw new Error(`notify failed: ${res.status}`);
+    },
+    [lambda],
+  );
+
   const handleRequestPayment = useCallback(async () => {
     if (outstandingLines.length === 0) return;
     setRequesting(true);
     setError(null);
+    setDuplicateNotice(null);
     try {
+      const candidateKeys = outstandingLines.map((l) => l.achievementKey);
+      const totalAmount = outstandingLines.reduce((s, l) => s + (l.currentUnitPrice ?? 0), 0);
+      const duplicate = findDuplicatePendingRequest(state.requests, candidateKeys);
+
+      if (duplicate) {
+        // Don't write a new REQUEST; surface the existing one.
+        setDuplicateNotice(
+          `You already have a pending request for these ${candidateKeys.length} item(s), submitted ${duplicate.requestedAt}. Click "Re-send notification" to email the payer again.`,
+        );
+        return;
+      }
+
       const requestId = `req-${now().getTime().toString(36)}`;
       const requestedAt = now().toISOString();
-      const totalAmount = outstandingLines.reduce((s, l) => s + (l.currentUnitPrice ?? 0), 0);
       const req: PaymentRequest = {
         requestId,
         requestedAt,
-        achievementKeys: outstandingLines.map((l) => l.achievementKey),
+        achievementKeys: candidateKeys,
         totalAmount,
         currency: APP_CURRENCY,
         status: 'PENDING',
       };
       await ledger.submitPaymentRequest(req);
-      const res = await lambda.post('/notify-payment-request', {
-        requestId,
-        subject: `Payment request: ${outstandingLines.length} item(s)`,
-        message: `Player requested ${formatMoney(totalAmount)} for ${outstandingLines.length} item(s)`,
-      });
-      if (!res.ok) throw new Error(`notify failed: ${res.status}`);
+      await sendNotify(requestId, candidateKeys.length, totalAmount);
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'request-failed');
     } finally {
       setRequesting(false);
     }
-  }, [outstandingLines, ledger, lambda, now, reload]);
+  }, [outstandingLines, state.requests, ledger, now, reload, sendNotify]);
+
+  const handleResendNotify = useCallback(async () => {
+    setRequesting(true);
+    setError(null);
+    try {
+      const candidateKeys = outstandingLines.map((l) => l.achievementKey);
+      const totalAmount = outstandingLines.reduce((s, l) => s + (l.currentUnitPrice ?? 0), 0);
+      const duplicate = findDuplicatePendingRequest(state.requests, candidateKeys);
+      if (!duplicate) {
+        setDuplicateNotice(null);
+        return;
+      }
+      await sendNotify(duplicate.requestId, candidateKeys.length, totalAmount);
+      setDuplicateNotice(`Re-sent notification for request ${duplicate.requestId}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'notify-failed');
+    } finally {
+      setRequesting(false);
+    }
+  }, [outstandingLines, state.requests, sendNotify]);
 
   if (state.loading) return <p>Loading…</p>;
 
@@ -136,6 +180,17 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
     <section aria-labelledby="player-heading">
       <h2 id="player-heading">My achievements</h2>
       {error && <p role="alert">{error}</p>}
+      {duplicateNotice && (
+        <div className="duplicate-notice" role="status">
+          <p>{duplicateNotice}</p>
+          <button onClick={handleResendNotify} disabled={requesting}>
+            Re-send notification
+          </button>{' '}
+          <button onClick={() => setDuplicateNotice(null)} disabled={requesting}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="actions">
         <button onClick={handleRefresh} disabled={refreshing}>
