@@ -1,6 +1,6 @@
 // Derived computations across ledger entities. The web view layer reads
 // raw rows via WebLedger, then runs these helpers to produce display data.
-import type { DetectedAchievement, Payment, PricingRule } from '@cgd/shared';
+import type { DetectedAchievement, Payment, PricingRule, Snapshot } from '@cgd/shared';
 
 export interface OutstandingLine {
   achievementKey: string;
@@ -37,17 +37,57 @@ function findPaymentForKey(payments: Payment[], achievementKey: string): Outstan
 }
 
 export interface ComputeInput {
+  /** Persisted achievement rows (currently: BADGE only — emitted by the Lambda fetcher). */
   achievements: DetectedAchievement[];
   rules: PricingRule[];
   payments: Payment[];
+  /**
+   * Latest snapshot for synthetic achievement derivation (XP milestones,
+   * later: rank tiers, clash rank tiers). null when not yet fetched.
+   */
+  snapshot: Snapshot | null;
+}
+
+/**
+ * For each xp-milestone rule, emit one synthetic OutstandingLine per
+ * milestone the player has reached. Achievement keys use the absolute XP
+ * threshold (XP#1000, XP#2000, …) — independent of the rule's `every`
+ * value, so changing the rule never re-prices already-paid milestones.
+ */
+function deriveXpLines(
+  snapshot: Snapshot,
+  rules: PricingRule[],
+  payments: Payment[],
+): OutstandingLine[] {
+  const out: OutstandingLine[] = [];
+  const seen = new Set<string>();
+  for (const r of rules) {
+    if (r.kind !== 'xp-milestone') continue;
+    const milestones = Math.floor(snapshot.xp / r.every);
+    for (let n = 1; n <= milestones; n++) {
+      const xp = n * r.every;
+      const key = `XP#${xp}`;
+      if (seen.has(key)) continue; // dedupe across overlapping rules
+      seen.add(key);
+      out.push({
+        achievementKey: key,
+        title: `XP ${xp}`,
+        currentUnitPrice: r.unitPrice,
+        ruleId: r.ruleId,
+        paid: findPaymentForKey(payments, key),
+      });
+    }
+  }
+  return out;
 }
 
 export function computeOutstandingLines({
   achievements,
   rules,
   payments,
+  snapshot,
 }: ComputeInput): OutstandingLine[] {
-  return achievements.map((a) => {
+  const fromAchievements = achievements.map<OutstandingLine>((a) => {
     if (a.category === 'BADGE') {
       const rule = findBadgeRule(rules, a.level);
       return {
@@ -66,6 +106,10 @@ export function computeOutstandingLines({
       paid: findPaymentForKey(payments, a.achievementKey),
     };
   });
+
+  const fromXp = snapshot ? deriveXpLines(snapshot, rules, payments) : [];
+
+  return [...fromAchievements, ...fromXp];
 }
 
 export interface OutstandingTotals {

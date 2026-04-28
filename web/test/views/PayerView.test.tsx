@@ -40,6 +40,7 @@ function fakeLedger(
   } = {},
 ) {
   return {
+    getLatestSnapshot: jest.fn(async () => null),
     listAchievements: jest.fn(async () => ACHIEVEMENTS),
     listPricingRules: jest.fn(async () => RULES),
     listPayments: jest.fn(async () => opts.payments ?? []),

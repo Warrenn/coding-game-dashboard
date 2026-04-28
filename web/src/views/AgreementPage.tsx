@@ -24,7 +24,9 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
 
   // Local edit state (used only by PAYER role)
   const [handleField, setHandleField] = useState('');
+  const [newRuleKind, setNewRuleKind] = useState<'badge-level' | 'xp-milestone'>('badge-level');
   const [newRuleLevel, setNewRuleLevel] = useState<AchievementLevel>('BRONZE');
+  const [newRuleEvery, setNewRuleEvery] = useState('1000');
   const [newRulePrice, setNewRulePrice] = useState('');
 
   useEffect(() => {
@@ -76,12 +78,27 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
       setError('price must be a non-negative number');
       return;
     }
-    const rule: PricingRule = {
-      ruleId: makeRuleId(),
-      kind: 'badge-level',
-      level: newRuleLevel,
-      unitPrice: price,
-    };
+    let rule: PricingRule;
+    if (newRuleKind === 'badge-level') {
+      rule = {
+        ruleId: makeRuleId(),
+        kind: 'badge-level',
+        level: newRuleLevel,
+        unitPrice: price,
+      };
+    } else {
+      const every = Math.floor(Number(newRuleEvery));
+      if (!Number.isFinite(every) || every <= 0) {
+        setError('XP increment must be a positive integer');
+        return;
+      }
+      rule = {
+        ruleId: makeRuleId(),
+        kind: 'xp-milestone',
+        every,
+        unitPrice: price,
+      };
+    }
     setSaving(true);
     setError(null);
     try {
@@ -131,18 +148,24 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
         </dl>
       )}
 
-      <h3>Pricing rules (badges)</h3>
+      <h3>Pricing rules</h3>
       {rules.length === 0 ? (
         <p>No pricing rules configured.</p>
       ) : (
         <ul>
           {rules.map((r) => (
             <li key={r.ruleId}>
-              {r.kind === 'badge-level' ? (
+              {r.kind === 'badge-level' && (
                 <>
                   Badge {r.level} → {formatMoney(r.unitPrice)}
                 </>
-              ) : (
+              )}
+              {r.kind === 'xp-milestone' && (
+                <>
+                  Every {r.every} XP → {formatMoney(r.unitPrice)}
+                </>
+              )}
+              {r.kind !== 'badge-level' && r.kind !== 'xp-milestone' && (
                 <>
                   {r.kind} → {formatMoney(r.unitPrice)}
                 </>
@@ -155,18 +178,42 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
       {isPayer && (
         <form onSubmit={addRule}>
           <label>
-            Level{' '}
+            Kind{' '}
             <select
-              value={newRuleLevel}
-              onChange={(e) => setNewRuleLevel(e.target.value as AchievementLevel)}
+              value={newRuleKind}
+              onChange={(e) => setNewRuleKind(e.target.value as 'badge-level' | 'xp-milestone')}
             >
-              {LEVELS.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
+              <option value="badge-level">Badge level</option>
+              <option value="xp-milestone">XP milestone</option>
             </select>
           </label>
+          {newRuleKind === 'badge-level' ? (
+            <label>
+              Level{' '}
+              <select
+                value={newRuleLevel}
+                onChange={(e) => setNewRuleLevel(e.target.value as AchievementLevel)}
+              >
+                {LEVELS.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label>
+              Every (XP){' '}
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={newRuleEvery}
+                onChange={(e) => setNewRuleEvery(e.target.value)}
+                required
+              />
+            </label>
+          )}
           <label>
             Unit price{' '}
             <input
