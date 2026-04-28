@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
+  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -118,6 +119,15 @@ describe('WebLedger', () => {
       const call = ddbMock.commandCalls(PutCommand)[0];
       expect(call.args[0].input.Item?.PK).toBe('AGREEMENT');
       expect(call.args[0].input.Item?.SK).toBe('RULE#r1');
+    });
+  });
+
+  describe('deletePricingRule', () => {
+    it('deletes by AGREEMENT/RULE#<ruleId>', async () => {
+      ddbMock.on(DeleteCommand).resolves({});
+      await makeLedger().deletePricingRule('r1');
+      const call = ddbMock.commandCalls(DeleteCommand)[0];
+      expect(call.args[0].input.Key).toEqual({ PK: 'AGREEMENT', SK: 'RULE#r1' });
     });
   });
 

@@ -2,6 +2,7 @@
 // credentials issued by the Cognito Identity Pool; IAM policies enforce
 // per-role access (see infra/storage-identity.yaml).
 import {
+  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -69,6 +70,15 @@ export class WebLedger {
       new PutCommand({
         TableName: this.table,
         Item: { PK: 'AGREEMENT', SK: `RULE#${rule.ruleId}`, ...rule },
+      }),
+    );
+  }
+
+  async deletePricingRule(ruleId: string): Promise<void> {
+    await this.db.send(
+      new DeleteCommand({
+        TableName: this.table,
+        Key: { PK: 'AGREEMENT', SK: `RULE#${ruleId}` },
       }),
     );
   }
