@@ -28,6 +28,9 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
   const [newRuleLevel, setNewRuleLevel] = useState<AchievementLevel>('BRONZE');
   const [newRuleEvery, setNewRuleEvery] = useState('1000');
   const [newRulePrice, setNewRulePrice] = useState('');
+  // ruleId currently being inline-edited, plus its draft price
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +68,51 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
       setMeta(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'save-failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEdit(rule: PricingRule) {
+    setEditingRuleId(rule.ruleId);
+    setEditPrice(String(rule.unitPrice));
+    setError(null);
+  }
+
+  async function saveEdit(rule: PricingRule, e: FormEvent) {
+    e.preventDefault();
+    if (!isPayer) return;
+    const price = Number(editPrice);
+    if (!Number.isFinite(price) || price < 0) {
+      setError('price must be a non-negative number');
+      return;
+    }
+    const updated: PricingRule = { ...rule, unitPrice: price };
+    setSaving(true);
+    setError(null);
+    try {
+      await ledger.upsertPricingRule(updated);
+      setRules((prev) => prev.map((r) => (r.ruleId === rule.ruleId ? updated : r)));
+      setEditingRuleId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'save-failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteRule(ruleId: string) {
+    if (!isPayer) return;
+    if (!confirm('Delete this pricing rule? Any payments already recorded against it stay paid.'))
+      return;
+    setSaving(true);
+    setError(null);
+    try {
+      await ledger.deletePricingRule(ruleId);
+      setRules((prev) => prev.filter((r) => r.ruleId !== ruleId));
+      if (editingRuleId === ruleId) setEditingRuleId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'delete-failed');
     } finally {
       setSaving(false);
     }
@@ -153,25 +201,67 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
         <p>No pricing rules configured.</p>
       ) : (
         <ul>
-          {rules.map((r) => (
-            <li key={r.ruleId}>
-              {r.kind === 'badge-level' && (
-                <>
-                  Badge {r.level} → {formatMoney(r.unitPrice)}
-                </>
-              )}
-              {r.kind === 'xp-milestone' && (
-                <>
-                  Every {r.every} XP → {formatMoney(r.unitPrice)}
-                </>
-              )}
-              {r.kind !== 'badge-level' && r.kind !== 'xp-milestone' && (
-                <>
-                  {r.kind} → {formatMoney(r.unitPrice)}
-                </>
-              )}
-            </li>
-          ))}
+          {rules.map((r) => {
+            const label =
+              r.kind === 'badge-level'
+                ? `Badge ${r.level}`
+                : r.kind === 'xp-milestone'
+                  ? `Every ${r.every} XP`
+                  : r.kind;
+            const isEditing = editingRuleId === r.ruleId;
+            return (
+              <li key={r.ruleId}>
+                {label} →{' '}
+                {isEditing ? (
+                  <form
+                    onSubmit={(e) => saveEdit(r, e)}
+                    style={{ display: 'inline-flex', gap: '0.5rem', alignItems: 'center' }}
+                  >
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editPrice}
+                      aria-label={`edit-price-${r.ruleId}`}
+                      onChange={(e) => setEditPrice(e.target.value)}
+                      required
+                    />
+                    <button type="submit" disabled={saving}>
+                      Save
+                    </button>
+                    <button type="button" onClick={() => setEditingRuleId(null)} disabled={saving}>
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    {formatMoney(r.unitPrice)}
+                    {isPayer && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          aria-label={`edit-${r.ruleId}`}
+                          onClick={() => startEdit(r)}
+                          disabled={saving}
+                        >
+                          Edit
+                        </button>{' '}
+                        <button
+                          type="button"
+                          aria-label={`delete-${r.ruleId}`}
+                          onClick={() => deleteRule(r.ruleId)}
+                          disabled={saving}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 

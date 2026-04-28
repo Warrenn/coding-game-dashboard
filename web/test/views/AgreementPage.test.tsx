@@ -22,6 +22,7 @@ function fakeLedger(overrides: Partial<Record<string, unknown>> = {}) {
     listPricingRules: jest.fn(async () => [SAMPLE_RULE]),
     putAgreementMeta: jest.fn(async () => undefined),
     upsertPricingRule: jest.fn(async () => undefined),
+    deletePricingRule: jest.fn(async () => undefined),
   };
   return Object.assign(base, overrides) as unknown as Parameters<typeof AgreementPage>[0]['ledger'];
 }
@@ -121,6 +122,93 @@ describe('AgreementPage — payer (edit)', () => {
     });
     render(<AgreementPage ledger={ledger} role="PAYER" />);
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/boom/));
+  });
+});
+
+describe('AgreementPage — payer can edit and delete rules', () => {
+  it('Edit button reveals an inline price input; Save calls upsertPricingRule', async () => {
+    const ledger = fakeLedger();
+    render(<AgreementPage ledger={ledger} role="PAYER" />);
+    await waitFor(() => expect(screen.getByText(/Badge GOLD/)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'edit-r1' }));
+    });
+
+    const input = screen.getByLabelText('edit-price-r1');
+    fireEvent.change(input, { target: { value: '25' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    });
+
+    expect(ledger.upsertPricingRule).toHaveBeenCalled();
+    const arg = (ledger.upsertPricingRule as jest.Mock).mock.calls[0][0] as PricingRule;
+    expect(arg.ruleId).toBe('r1');
+    expect(arg.kind).toBe('badge-level');
+    expect(arg.unitPrice).toBe(25);
+  });
+
+  it('Cancel during edit discards the draft and leaves the rule unchanged', async () => {
+    const ledger = fakeLedger();
+    render(<AgreementPage ledger={ledger} role="PAYER" />);
+    await waitFor(() => expect(screen.getByText(/Badge GOLD/)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'edit-r1' }));
+    });
+    fireEvent.change(screen.getByLabelText('edit-price-r1'), { target: { value: '99' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    });
+
+    expect(ledger.upsertPricingRule).not.toHaveBeenCalled();
+  });
+
+  it('Delete button removes the rule via deletePricingRule (after confirm)', async () => {
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    try {
+      const ledger = fakeLedger();
+      render(<AgreementPage ledger={ledger} role="PAYER" />);
+      await waitFor(() => expect(screen.getByText(/Badge GOLD/)).toBeInTheDocument());
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'delete-r1' }));
+      });
+
+      expect(ledger.deletePricingRule).toHaveBeenCalledWith('r1');
+      // Optimistic UI removes the row immediately.
+      expect(screen.queryByText(/Badge GOLD/)).not.toBeInTheDocument();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  it('Delete is a no-op when user cancels the confirm dialog', async () => {
+    const originalConfirm = window.confirm;
+    window.confirm = () => false;
+    try {
+      const ledger = fakeLedger();
+      render(<AgreementPage ledger={ledger} role="PAYER" />);
+      await waitFor(() => expect(screen.getByText(/Badge GOLD/)).toBeInTheDocument());
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'delete-r1' }));
+      });
+
+      expect(ledger.deletePricingRule).not.toHaveBeenCalled();
+      expect(screen.getByText(/Badge GOLD/)).toBeInTheDocument();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  it('Player role does not see Edit/Delete buttons', async () => {
+    render(<AgreementPage ledger={fakeLedger()} role="PLAYER" />);
+    await waitFor(() => expect(screen.getByText(/Badge GOLD/)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'edit-r1' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'delete-r1' })).not.toBeInTheDocument();
   });
 });
 
