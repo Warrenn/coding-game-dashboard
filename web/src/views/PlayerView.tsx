@@ -38,6 +38,8 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
   const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  type AchievementFilter = 'all' | 'paid' | 'outstanding' | 'unpriced';
+  const [achievementFilter, setAchievementFilter] = useState<AchievementFilter>('all');
 
   const reload = useCallback(async () => {
     setError(null);
@@ -241,7 +243,35 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
       {lines.length === 0 ? (
         <p>No achievements detected yet. Click "Refresh from CodinGame".</p>
       ) : (
-        <table>
+        <>
+          <div className="actions" style={{ marginBottom: '0.6rem' }}>
+            {(['all', 'paid', 'outstanding', 'unpriced'] as const).map((f) => {
+              const count =
+                f === 'all'
+                  ? lines.length
+                  : f === 'paid'
+                    ? lines.filter((l) => l.paid).length
+                    : f === 'outstanding'
+                      ? lines.filter((l) => !l.paid && l.currentUnitPrice !== null).length
+                      : lines.filter((l) => !l.paid && l.currentUnitPrice === null).length;
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setAchievementFilter(f)}
+                  style={{
+                    background:
+                      achievementFilter === f ? 'var(--accent)' : 'var(--bg-elevated)',
+                    color: achievementFilter === f ? 'var(--bg)' : 'var(--fg)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)} ({count})
+                </button>
+              );
+            })}
+          </div>
+          <table>
           <thead>
             <tr>
               <th>Title</th>
@@ -250,7 +280,16 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
             </tr>
           </thead>
           <tbody>
-            {lines.map((l) => (
+            {lines
+              .filter((l) => {
+                if (achievementFilter === 'all') return true;
+                if (achievementFilter === 'paid') return Boolean(l.paid);
+                if (achievementFilter === 'outstanding')
+                  return !l.paid && l.currentUnitPrice !== null;
+                // unpriced
+                return !l.paid && l.currentUnitPrice === null;
+              })
+              .map((l) => (
               <tr key={l.achievementKey}>
                 <td>
                   {l.title}
@@ -280,6 +319,7 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
             ))}
           </tbody>
         </table>
+        </>
       )}
 
       <h3>My requests</h3>
