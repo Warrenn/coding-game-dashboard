@@ -123,6 +123,8 @@ Resources:
                       - REQUEST
                       # Payer can dismiss their own INBOX notifications.
                       - INBOX#PAYER
+                      # Payer can write notes to the player's inbox.
+                      - INBOX#PLAYER
         - PolicyName: invoke-fetcher-url
           PolicyDocument:
             Version: '2012-10-17'
@@ -187,6 +189,9 @@ Resources:
                   ForAllValues:StringEquals:
                     dynamodb:LeadingKeys:
                       - REQUEST
+                      # Player can dismiss their own INBOX notifications
+                      # (payer-to-player notes appear here).
+                      - INBOX#PLAYER
         - PolicyName: invoke-fetcher-url
           PolicyDocument:
             Version: '2012-10-17'

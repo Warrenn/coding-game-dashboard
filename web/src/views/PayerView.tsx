@@ -119,7 +119,9 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
       await ledger.recordPayment(payment);
 
       // Auto-mark any PENDING request whose achievementKeys are now fully
-      // covered (across all payments + the one we just wrote).
+      // covered (across all payments + the one we just wrote). For each
+      // request marked PAID, drop a note in the player's inbox so they see
+      // the resolution without having to refresh.
       const allPayments = [...state.payments, payment];
       const paidKeys = new Set<string>();
       for (const p of allPayments) {
@@ -129,8 +131,22 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         if (r.status !== 'PENDING') continue;
         if (r.achievementKeys.every((k) => paidKeys.has(k))) {
           await ledger.setPaymentRequestStatus(r, 'PAID');
+          await ledger.writeInbox('PLAYER', {
+            eventId: `${now().toISOString()}#paid-${r.requestId}`,
+            subject: `Request marked PAID`,
+            message: `Your payment request submitted ${r.requestedAt} for ${formatMoney(r.totalAmount)} has been paid.`,
+            refId: r.requestId,
+          });
         }
       }
+      // Also drop a generic "payment recorded" note even if no specific
+      // request was matched (e.g. payer recorded an unsolicited payment).
+      await ledger.writeInbox('PLAYER', {
+        eventId: `${now().toISOString()}#payment-${payment.paymentId}`,
+        subject: 'Payment recorded',
+        message: `Payer recorded ${formatMoney(payment.totalAmount)} for ${payment.lineItems.length} item(s)${payment.note ? ` — note: ${payment.note}` : ''}.`,
+        refId: payment.paymentId,
+      });
 
       setSelected(new Set());
       setNote('');
@@ -142,8 +158,8 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
     }
   }, [selected, outstanding, ledger, now, note, state.payments, state.requests, reload]);
 
-  // Dismissing a payer-side inbox entry also cancels the linked REQUEST so
-  // the player gets visible feedback (their request flips PENDING → CANCELLED).
+  // Dismissing a payer-side inbox entry cancels the linked REQUEST AND
+  // writes an INBOX#PLAYER note so the player sees the rejection.
   const dismissInbox = useCallback(
     async (eventId: string, refId?: string | null) => {
       setError(null);
@@ -153,7 +169,15 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
           const linked = state.requests.find(
             (r) => r.requestId === refId && r.status === 'PENDING',
           );
-          if (linked) await ledger.setPaymentRequestStatus(linked, 'CANCELLED');
+          if (linked) {
+            await ledger.setPaymentRequestStatus(linked, 'CANCELLED');
+            await ledger.writeInbox('PLAYER', {
+              eventId: `${now().toISOString()}#cancelled-${linked.requestId}`,
+              subject: 'Request cancelled by payer',
+              message: `Your request submitted ${linked.requestedAt} for ${formatMoney(linked.totalAmount)} was cancelled.`,
+              refId: linked.requestId,
+            });
+          }
         }
         setState((s) => ({
           ...s,
@@ -166,7 +190,7 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         setError(e instanceof Error ? e.message : 'dismiss-failed');
       }
     },
-    [ledger, state.requests],
+    [ledger, state.requests, now],
   );
 
   const dismissAllInbox = useCallback(async () => {
@@ -189,6 +213,12 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
       );
       for (const r of toCancel) {
         await ledger.setPaymentRequestStatus(r, 'CANCELLED');
+        await ledger.writeInbox('PLAYER', {
+          eventId: `${now().toISOString()}#cancelled-${r.requestId}`,
+          subject: 'Request cancelled by payer',
+          message: `Your request submitted ${r.requestedAt} for ${formatMoney(r.totalAmount)} was cancelled.`,
+          refId: r.requestId,
+        });
       }
       setState((s) => ({
         ...s,
@@ -203,7 +233,7 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
       setError(msg);
       toast.error(`Dismiss failed: ${msg}`);
     }
-  }, [ledger, state.inbox, state.requests, toast]);
+  }, [ledger, state.inbox, state.requests, toast, now]);
 
   if (state.loading) return <p>Loading…</p>;
 

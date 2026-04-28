@@ -59,7 +59,9 @@ function fakeLedger(
     listPricingRules: jest.fn(async () => RULES),
     listPayments: jest.fn(async () => opts.payments ?? []),
     listRequests: jest.fn(async () => opts.requests ?? []),
+    listInbox: jest.fn(async () => []),
     submitPaymentRequest: jest.fn(async () => undefined),
+    deleteInboxEntry: jest.fn(async () => undefined),
   } as unknown as Parameters<typeof PlayerView>[0]['ledger'];
 }
 
