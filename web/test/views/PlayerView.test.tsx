@@ -82,8 +82,8 @@ function fakeLambda(opts: { okSnapshot?: boolean; okNotify?: boolean } = {}) {
 describe('PlayerView', () => {
   it('renders achievements with paid/outstanding status and totals', async () => {
     render(<PlayerView ledger={fakeLedger()} lambda={fakeLambda()} />);
-    await waitFor(() => expect(screen.getByText('Gold A')).toBeInTheDocument());
-    expect(screen.getByText('Bronze B')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText('Gold A').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Bronze B').length).toBeGreaterThan(0);
     // Gold A → outstanding 10 ZAR; Bronze B → unpriced (no rule)
     expect(screen.getAllByText(/R[\s ]?10[.,]00/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/1 item\(s\)/).length).toBeGreaterThanOrEqual(1);
@@ -93,7 +93,7 @@ describe('PlayerView', () => {
     const ledger = fakeLedger();
     const lambda = fakeLambda();
     render(<PlayerView ledger={ledger} lambda={lambda} />);
-    await waitFor(() => expect(screen.getByText('Gold A')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Gold A').length).toBeGreaterThan(0));
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /refresh from codingame/i }));
@@ -106,10 +106,12 @@ describe('PlayerView', () => {
     const ledger = fakeLedger();
     const lambda = fakeLambda();
     render(<PlayerView ledger={ledger} lambda={lambda} now={() => new Date(NOW)} />);
-    await waitFor(() => expect(screen.getByText('Gold A')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Gold A').length).toBeGreaterThan(0));
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /request payment \(1 item\(s\)\)/i }));
+      fireEvent.click(
+        screen.getByRole('button', { name: /request payment for 1 item\(s\)/i }),
+      );
     });
 
     expect(ledger.submitPaymentRequest).toHaveBeenCalled();
@@ -122,7 +124,7 @@ describe('PlayerView', () => {
   it('shows surface error when refresh fails', async () => {
     const lambda = fakeLambda({ okSnapshot: false });
     render(<PlayerView ledger={fakeLedger()} lambda={lambda} />);
-    await waitFor(() => expect(screen.getByText('Gold A')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Gold A').length).toBeGreaterThan(0));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /refresh from codingame/i }));
     });
@@ -137,13 +139,14 @@ describe('PlayerView', () => {
     );
   });
 
-  it('disables Request payment button when no outstanding lines', async () => {
+  it('shows "Nothing outstanding to request" when no outstanding lines', async () => {
     const ledger = fakeLedger({
       // Only Bronze, which has no rule → unpriced, not outstanding
       achievements: [ACHIEVEMENTS[1]],
     });
     render(<PlayerView ledger={ledger} lambda={fakeLambda()} />);
-    await waitFor(() => expect(screen.getByText('Bronze B')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /request payment \(0 item\(s\)\)/i })).toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByText(/Nothing outstanding to request/i)).toBeInTheDocument(),
+    );
   });
 });

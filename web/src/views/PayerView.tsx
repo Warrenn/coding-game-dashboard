@@ -10,6 +10,7 @@ import type {
 } from '@cgd/shared';
 import { computeOutstandingLines, totals } from '../data/derived.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
+import { useModal } from '../ui/modal.js';
 import { useToast } from '../ui/toast.js';
 import type { WebLedger } from '../data/ledger.js';
 
@@ -41,6 +42,7 @@ const INITIAL: DataState = {
 
 export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
   const toast = useToast();
+  const modal = useModal();
   const [state, setState] = useState<DataState>(INITIAL);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
@@ -195,9 +197,12 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
 
   const dismissAllInbox = useCallback(async () => {
     if (state.inbox.length === 0) return;
-    const ok = await toast.confirm(
-      `Dismiss all ${state.inbox.length} inbox notifications? Linked PENDING requests are CANCELLED.`,
-    );
+    const ok = await modal.confirm({
+      title: 'Dismiss all notifications?',
+      message: `${state.inbox.length} notification(s) will be cleared. Any linked PENDING requests will be CANCELLED.`,
+      confirmLabel: 'Dismiss all',
+      danger: true,
+    });
     if (!ok) return;
     setError(null);
     try {
