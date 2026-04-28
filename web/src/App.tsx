@@ -33,8 +33,7 @@ function SignedInShell({ config }: { config: AppConfig }) {
     });
   }, [credentials, config.lambdaUrl, config.region]);
 
-  // Payer's primary view is the Ledger; player's is Agreement (until they have
-  // a handle configured, achievements panel can't load anything useful).
+  // Payer's primary view is the Ledger; player's is My achievements.
   const tabs: TabSpec[] = useMemo(() => {
     if (!ledger || !role) return [];
     if (role === 'PAYER') {
@@ -47,13 +46,7 @@ function SignedInShell({ config }: { config: AppConfig }) {
         },
       ];
     }
-    const playerTabs: TabSpec[] = [
-      {
-        id: 'agreement',
-        label: 'Agreement',
-        panel: <AgreementPage ledger={ledger} role={role} />,
-      },
-    ];
+    const playerTabs: TabSpec[] = [];
     if (lambda) {
       playerTabs.push({
         id: 'achievements',
@@ -61,6 +54,11 @@ function SignedInShell({ config }: { config: AppConfig }) {
         panel: <PlayerView ledger={ledger} lambda={lambda} />,
       });
     }
+    playerTabs.push({
+      id: 'agreement',
+      label: 'Agreement',
+      panel: <AgreementPage ledger={ledger} role={role} />,
+    });
     return playerTabs;
   }, [ledger, role, lambda]);
 
