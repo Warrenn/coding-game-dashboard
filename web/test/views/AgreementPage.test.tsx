@@ -70,7 +70,7 @@ describe('AgreementPage — payer (edit)', () => {
     expect(arg.handle).toBe('new-handle');
   });
 
-  it('adds a pricing rule via ledger.upsertPricingRule', async () => {
+  it('adds a badge-level pricing rule via ledger.upsertPricingRule', async () => {
     const ledger = fakeLedger();
     render(<AgreementPage ledger={ledger} role="PAYER" />);
     await waitFor(() =>
@@ -88,6 +88,29 @@ describe('AgreementPage — payer (edit)', () => {
     const arg = (ledger.upsertPricingRule as jest.Mock).mock.calls[0][0] as PricingRule;
     expect(arg.kind).toBe('badge-level');
     expect(arg.unitPrice).toBe(15);
+  });
+
+  it('adds an xp-milestone rule when kind=XP milestone is selected', async () => {
+    const ledger = fakeLedger();
+    render(<AgreementPage ledger={ledger} role="PAYER" />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /add rule/i })).toBeInTheDocument(),
+    );
+
+    fireEvent.change(screen.getByLabelText(/^Kind/i), { target: { value: 'xp-milestone' } });
+    fireEvent.change(screen.getByLabelText(/^Every \(XP\)/i), { target: { value: '500' } });
+    fireEvent.change(screen.getByLabelText(/Unit price/i), { target: { value: '3' } });
+
+    await act(async () => {
+      screen.getByRole('button', { name: /add rule/i }).click();
+    });
+
+    const arg = (ledger.upsertPricingRule as jest.Mock).mock.calls[0][0] as PricingRule & {
+      every: number;
+    };
+    expect(arg.kind).toBe('xp-milestone');
+    expect(arg.every).toBe(500);
+    expect(arg.unitPrice).toBe(3);
   });
 
   it('surfaces load errors', async () => {

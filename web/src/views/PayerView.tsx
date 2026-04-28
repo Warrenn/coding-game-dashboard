@@ -6,6 +6,7 @@ import type {
   PaymentLineItem,
   PaymentRequest,
   PricingRule,
+  Snapshot,
 } from '@cgd/shared';
 import { computeOutstandingLines, totals } from '../data/derived.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
@@ -19,6 +20,7 @@ interface PayerViewProps {
 
 interface DataState {
   loading: boolean;
+  snapshot: Snapshot | null;
   achievements: DetectedAchievement[];
   rules: PricingRule[];
   payments: Payment[];
@@ -28,6 +30,7 @@ interface DataState {
 
 const INITIAL: DataState = {
   loading: true,
+  snapshot: null,
   achievements: [],
   rules: [],
   payments: [],
@@ -45,14 +48,23 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
   const reload = useCallback(async () => {
     setError(null);
     try {
-      const [achievements, rules, payments, requests, inbox] = await Promise.all([
+      const [snapshot, achievements, rules, payments, requests, inbox] = await Promise.all([
+        ledger.getLatestSnapshot(),
         ledger.listAchievements(),
         ledger.listPricingRules(),
         ledger.listPayments(),
         ledger.listRequests(),
         ledger.listInbox('PAYER'),
       ]);
-      setState({ loading: false, achievements, rules, payments, requests, inbox });
+      setState({
+        loading: false,
+        snapshot,
+        achievements,
+        rules,
+        payments,
+        requests,
+        inbox,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'load-failed');
       setState((s) => ({ ...s, loading: false }));
