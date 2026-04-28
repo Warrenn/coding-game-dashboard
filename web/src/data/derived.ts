@@ -5,6 +5,9 @@ import type { DetectedAchievement, Payment, PricingRule, Snapshot } from '@cgd/s
 export interface OutstandingLine {
   achievementKey: string;
   title: string;
+  /** Badge level when category=BADGE; null otherwise. Surfaced in the UI so
+   *  the payer knows which Badge rule level would price this row. */
+  badgeLevel: DetectedAchievement['level'] | null;
   currentUnitPrice: number | null;
   /** Pricing rule that matched, or null if none configured for this category. */
   ruleId: string | null;
@@ -72,6 +75,7 @@ function deriveXpLines(
       out.push({
         achievementKey: key,
         title: `XP ${xp}`,
+        badgeLevel: null,
         currentUnitPrice: r.unitPrice,
         ruleId: r.ruleId,
         paid: findPaymentForKey(payments, key),
@@ -93,6 +97,7 @@ export function computeOutstandingLines({
       return {
         achievementKey: a.achievementKey,
         title: a.title,
+        badgeLevel: a.level,
         currentUnitPrice: rule?.unitPrice ?? null,
         ruleId: rule?.ruleId ?? null,
         paid: findPaymentForKey(payments, a.achievementKey),
@@ -101,6 +106,7 @@ export function computeOutstandingLines({
     return {
       achievementKey: a.achievementKey,
       title: a.title,
+      badgeLevel: null,
       currentUnitPrice: null,
       ruleId: null,
       paid: findPaymentForKey(payments, a.achievementKey),

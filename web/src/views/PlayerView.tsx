@@ -154,6 +154,23 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
     }
   }, [outstandingLines, state.requests, ledger, now, reload, sendNotify]);
 
+  const cancelRequest = useCallback(
+    async (r: PaymentRequest) => {
+      if (!confirm('Cancel this payment request? It will be removed.')) return;
+      setError(null);
+      try {
+        await ledger.deletePaymentRequest(r);
+        setState((s) => ({
+          ...s,
+          requests: s.requests.filter((x) => x.requestId !== r.requestId),
+        }));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'cancel-failed');
+      }
+    },
+    [ledger],
+  );
+
   const handleResendNotify = useCallback(async () => {
     setRequesting(true);
     setError(null);
@@ -235,9 +252,22 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
           <tbody>
             {lines.map((l) => (
               <tr key={l.achievementKey}>
-                <td>{l.title}</td>
                 <td>
-                  {l.paid ? 'Paid' : l.currentUnitPrice === null ? 'Unpriced' : 'Outstanding'}
+                  {l.title}
+                  {l.badgeLevel && (
+                    <span style={{ color: 'var(--fg-dim)', marginLeft: '0.5rem' }}>
+                      ({l.badgeLevel})
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {l.paid
+                    ? 'Paid'
+                    : l.currentUnitPrice === null
+                      ? l.badgeLevel
+                        ? `Unpriced — payer should add a Badge ${l.badgeLevel} rule`
+                        : 'Unpriced'
+                      : 'Outstanding'}
                 </td>
                 <td>
                   {l.paid
@@ -260,6 +290,19 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
           {state.requests.map((r) => (
             <li key={r.requestId}>
               {r.requestedAt} · {formatMoney(r.totalAmount)} · {r.status}
+              {r.status === 'PENDING' && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    aria-label={`cancel-${r.requestId}`}
+                    onClick={() => cancelRequest(r)}
+                    disabled={requesting}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
             </li>
           ))}
         </ul>
