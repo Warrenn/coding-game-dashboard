@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   DetectedAchievement,
   InboxEntry,
@@ -9,7 +9,6 @@ import type {
 import type { Payment } from '@cgd/shared';
 import { computeOutstandingLines, totals, type OutstandingLine } from '../data/derived.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
-import { findDuplicatePendingRequest } from '../data/duplicates.js';
 import { useModal } from '../ui/modal.js';
 import { useToast } from '../ui/toast.js';
 import type { WebLedger } from '../data/ledger.js';
@@ -42,20 +41,42 @@ const INITIAL: DataState = {
   inbox: [],
 };
 
+type LineStatus = 'paid' | 'requested' | 'outstanding' | 'unpriced';
+
+function statusOf(
+  line: OutstandingLine,
+  pendingByKey: Map<string, PaymentRequest>,
+): LineStatus {
+  if (line.paid) return 'paid';
+  if (line.currentUnitPrice === null) return 'unpriced';
+  if (pendingByKey.has(line.achievementKey)) return 'requested';
+  return 'outstanding';
+}
+
+const STATUS_LABEL: Record<LineStatus, string> = {
+  paid: 'Paid',
+  requested: 'Requested',
+  outstanding: 'Outstanding',
+  unpriced: 'Unpriced',
+};
+
+// Order matters: shown left → right. "All" rightmost per requested layout.
+const FILTERS: ('outstanding' | 'requested' | 'paid' | 'unpriced' | 'all')[] = [
+  'outstanding',
+  'requested',
+  'paid',
+  'unpriced',
+  'all',
+];
+
 export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerViewProps) {
   const toast = useToast();
   const modal = useModal();
   const [state, setState] = useState<DataState>(INITIAL);
   const [refreshing, setRefreshing] = useState(false);
-  const [requesting, setRequesting] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
-  type AchievementFilter = 'all' | 'paid' | 'outstanding' | 'unpriced';
-  const [achievementFilter, setAchievementFilter] = useState<AchievementFilter>('all');
-  // Selection of outstanding-line keys the player wants to include in the
-  // next payment request. Auto-syncs to "all currently outstanding" but the
-  // player can uncheck items they don't want to bill yet.
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]>('outstanding');
 
   const reload = useCallback(async () => {
     setError(null);
@@ -104,15 +125,12 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
     }
   }, [lambda, reload]);
 
-  // Initial load: hit DDB first, then trigger CodinGame fetch automatically
-  // if no snapshot exists yet so the user doesn't have to click Refresh.
+  // Initial load + auto-fetch when no snapshot.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       await reload();
       if (cancelled) return;
-      // After reload, if state.snapshot is still null, kick a fetch.
-      // We re-read via state setter to avoid a stale-closure dep.
       setState((s) => {
         if (!s.snapshot && !cancelled) {
           void handleRefresh();
@@ -123,145 +141,124 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
     return () => {
       cancelled = true;
     };
-    // handleRefresh is intentionally omitted — it depends on reload which
-    // already changes when ledger changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reload]);
 
   const lines: OutstandingLine[] = computeOutstandingLines(state);
   const t = totals(lines);
-  const outstandingLines = lines.filter((l) => !l.paid && l.currentUnitPrice !== null);
 
-  // Keep selection in sync with current outstanding lines: new ones are
-  // selected by default; ones that fell off (e.g. just got paid) are removed.
-  useEffect(() => {
-    setSelectedKeys((prev) => {
-      const valid = new Set(outstandingLines.map((l) => l.achievementKey));
-      const next = new Set<string>();
-      for (const l of outstandingLines) next.add(l.achievementKey);
-      for (const k of prev) if (!valid.has(k)) continue;
-      return next;
-    });
-    // re-derive from outstandingLines identity; outstandingLines is recomputed
-    // every render, so deep-comparing keys would be more correct but for this
-    // small data scale string-join works.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outstandingLines.map((l) => l.achievementKey).join(',')]);
+  // Map every achievementKey that's in any PENDING request → that request.
+  // Used to compute per-row status and to find what to cancel.
+  const pendingByKey = useMemo(() => {
+    const m = new Map<string, PaymentRequest>();
+    for (const r of state.requests) {
+      if (r.status !== 'PENDING') continue;
+      for (const k of r.achievementKeys) {
+        if (!m.has(k)) m.set(k, r);
+      }
+    }
+    return m;
+  }, [state.requests]);
 
-  const toggleSelected = (key: string) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-  const selectAll = () =>
-    setSelectedKeys(new Set(outstandingLines.map((l) => l.achievementKey)));
-  const selectNone = () => setSelectedKeys(new Set());
-
-  const selectedLines = outstandingLines.filter((l) => selectedKeys.has(l.achievementKey));
-  const selectedTotal = selectedLines.reduce((s, l) => s + (l.currentUnitPrice ?? 0), 0);
-
-  // Send (or re-send) the SNS notification for a request id without writing
-  // a new REQUEST row. Used both by the normal submit flow and by the
-  // "Re-notify" action on a duplicate.
-  const sendNotify = useCallback(
-    async (requestId: string, lineCount: number, totalAmount: number) => {
-      const res = await lambda.post('/notify-payment-request', {
-        requestId,
-        subject: `Payment request: ${lineCount} item(s)`,
-        message: `Player requested ${formatMoney(totalAmount)} for ${lineCount} item(s)`,
-      });
-      if (!res.ok) throw new Error(`notify failed: ${res.status}`);
-    },
-    [lambda],
+  const lineStatuses = useMemo(
+    () => new Map(lines.map((l) => [l.achievementKey, statusOf(l, pendingByKey)])),
+    [lines, pendingByKey],
   );
 
-  const handleRequestPayment = useCallback(async () => {
-    if (selectedLines.length === 0) return;
-    setRequesting(true);
-    setError(null);
-    setDuplicateNotice(null);
-    try {
-      const candidateKeys = selectedLines.map((l) => l.achievementKey);
-      const totalAmount = selectedLines.reduce((s, l) => s + (l.currentUnitPrice ?? 0), 0);
-      const duplicate = findDuplicatePendingRequest(state.requests, candidateKeys);
+  const counts: Record<(typeof FILTERS)[number], number> = {
+    outstanding: 0,
+    requested: 0,
+    paid: 0,
+    unpriced: 0,
+    all: lines.length,
+  };
+  for (const l of lines) {
+    const s = lineStatuses.get(l.achievementKey)!;
+    counts[s]++;
+  }
 
-      if (duplicate) {
-        // Don't write a new REQUEST; surface the existing one.
-        setDuplicateNotice(
-          `You already have a pending request for these ${candidateKeys.length} item(s), submitted ${duplicate.requestedAt}. Click "Re-send notification" to email the payer again.`,
-        );
-        return;
+  const visibleLines = lines.filter((l) =>
+    filter === 'all' ? true : lineStatuses.get(l.achievementKey) === filter,
+  );
+
+  const requestSingle = useCallback(
+    async (line: OutstandingLine) => {
+      if (line.currentUnitPrice == null) return;
+      setBusyKey(line.achievementKey);
+      setError(null);
+      try {
+        const requestId = `req-${now().getTime().toString(36)}-${line.achievementKey
+          .replace(/[^A-Za-z0-9]/g, '')
+          .slice(0, 8)}`;
+        const requestedAt = now().toISOString();
+        const req: PaymentRequest = {
+          requestId,
+          requestedAt,
+          achievementKeys: [line.achievementKey],
+          totalAmount: line.currentUnitPrice,
+          currency: APP_CURRENCY,
+          status: 'PENDING',
+        };
+        await ledger.submitPaymentRequest(req);
+        const res = await lambda.post('/notify-payment-request', {
+          requestId,
+          subject: `Payment request: ${line.title}`,
+          message: `Player requested ${formatMoney(line.currentUnitPrice)} for "${line.title}"`,
+        });
+        if (!res.ok) throw new Error(`notify failed: ${res.status}`);
+        await reload();
+        toast.success(`Requested payment for ${line.title}.`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'request-failed';
+        setError(msg);
+        toast.error(`Request failed: ${msg}`);
+      } finally {
+        setBusyKey(null);
       }
+    },
+    [ledger, lambda, now, reload, toast],
+  );
 
-      const requestId = `req-${now().getTime().toString(36)}`;
-      const requestedAt = now().toISOString();
-      const req: PaymentRequest = {
-        requestId,
-        requestedAt,
-        achievementKeys: candidateKeys,
-        totalAmount,
-        currency: APP_CURRENCY,
-        status: 'PENDING',
-      };
-      await ledger.submitPaymentRequest(req);
-      await sendNotify(requestId, candidateKeys.length, totalAmount);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'request-failed');
-    } finally {
-      setRequesting(false);
-    }
-  }, [outstandingLines, state.requests, ledger, now, reload, sendNotify]);
-
-  const cancelRequest = useCallback(
-    async (r: PaymentRequest) => {
+  const cancelKey = useCallback(
+    async (line: OutstandingLine) => {
+      const matching = state.requests.filter(
+        (r) => r.status === 'PENDING' && r.achievementKeys.includes(line.achievementKey),
+      );
+      if (matching.length === 0) return;
       const ok = await modal.confirm({
         title: 'Cancel payment request?',
-        message: 'The request will be removed.',
+        message:
+          matching.some((r) => r.achievementKeys.length > 1)
+            ? `This is part of a request that also includes other items. Cancelling here will cancel the whole request (${matching.reduce((s, r) => s + r.achievementKeys.length, 0)} items).`
+            : 'The request will be removed.',
         confirmLabel: 'Cancel request',
         cancelLabel: 'Keep',
         danger: true,
       });
       if (!ok) return;
+
+      setBusyKey(line.achievementKey);
       setError(null);
       try {
-        await ledger.deletePaymentRequest(r);
+        for (const r of matching) {
+          await ledger.deletePaymentRequest(r);
+        }
+        const cancelled = new Set(matching.map((r) => r.requestId));
         setState((s) => ({
           ...s,
-          requests: s.requests.filter((x) => x.requestId !== r.requestId),
+          requests: s.requests.filter((r) => !cancelled.has(r.requestId)),
         }));
         toast.success('Request cancelled.');
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'cancel-failed';
         setError(msg);
         toast.error(`Cancel failed: ${msg}`);
+      } finally {
+        setBusyKey(null);
       }
     },
-    [ledger, toast],
+    [ledger, modal, state.requests, toast],
   );
-
-  const handleResendNotify = useCallback(async () => {
-    setRequesting(true);
-    setError(null);
-    try {
-      const candidateKeys = outstandingLines.map((l) => l.achievementKey);
-      const totalAmount = outstandingLines.reduce((s, l) => s + (l.currentUnitPrice ?? 0), 0);
-      const duplicate = findDuplicatePendingRequest(state.requests, candidateKeys);
-      if (!duplicate) {
-        setDuplicateNotice(null);
-        return;
-      }
-      await sendNotify(duplicate.requestId, candidateKeys.length, totalAmount);
-      setDuplicateNotice(`Re-sent notification for request ${duplicate.requestId}.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'notify-failed');
-    } finally {
-      setRequesting(false);
-    }
-  }, [selectedLines, state.requests, sendNotify]);
 
   if (state.loading) return <p>Loading…</p>;
 
@@ -269,17 +266,6 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
     <section aria-labelledby="player-heading">
       <h2 id="player-heading">My achievements</h2>
       {error && <p role="alert">{error}</p>}
-      {duplicateNotice && (
-        <div className="duplicate-notice" role="status">
-          <p>{duplicateNotice}</p>
-          <button onClick={handleResendNotify} disabled={requesting}>
-            Re-send notification
-          </button>{' '}
-          <button onClick={() => setDuplicateNotice(null)} disabled={requesting}>
-            Dismiss
-          </button>
-        </div>
-      )}
 
       <div className="actions">
         <button onClick={handleRefresh} disabled={refreshing}>
@@ -309,139 +295,87 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
       ) : (
         <>
           <div className="actions" style={{ marginBottom: '0.6rem' }}>
-            {(['all', 'paid', 'outstanding', 'unpriced'] as const).map((f) => {
-              const count =
-                f === 'all'
-                  ? lines.length
-                  : f === 'paid'
-                    ? lines.filter((l) => l.paid).length
-                    : f === 'outstanding'
-                      ? lines.filter((l) => !l.paid && l.currentUnitPrice !== null).length
-                      : lines.filter((l) => !l.paid && l.currentUnitPrice === null).length;
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setAchievementFilter(f)}
-                  style={{
-                    background:
-                      achievementFilter === f ? 'var(--accent)' : 'var(--bg-elevated)',
-                    color: achievementFilter === f ? 'var(--bg)' : 'var(--fg)',
-                    border: '1px solid var(--border)',
-                  }}
-                >
-                  {f.charAt(0).toUpperCase() + f.slice(1)} ({count})
-                </button>
-              );
-            })}
-          </div>
-          <table>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines
-              .filter((l) => {
-                if (achievementFilter === 'all') return true;
-                if (achievementFilter === 'paid') return Boolean(l.paid);
-                if (achievementFilter === 'outstanding')
-                  return !l.paid && l.currentUnitPrice !== null;
-                // unpriced
-                return !l.paid && l.currentUnitPrice === null;
-              })
-              .map((l) => (
-              <tr key={l.achievementKey}>
-                <td>
-                  {l.title}
-                  {l.badgeLevel && (
-                    <span style={{ color: 'var(--fg-dim)', marginLeft: '0.5rem' }}>
-                      ({l.badgeLevel})
-                    </span>
-                  )}
-                </td>
-                <td>
-                  {l.paid
-                    ? 'Paid'
-                    : l.currentUnitPrice === null
-                      ? l.badgeLevel
-                        ? `Unpriced — payer should add a Badge ${l.badgeLevel} rule`
-                        : 'Unpriced'
-                      : 'Outstanding'}
-                </td>
-                <td>
-                  {l.paid
-                    ? formatMoney(l.paid.unitPriceAtPayment)
-                    : l.currentUnitPrice === null
-                      ? '—'
-                      : formatMoney(l.currentUnitPrice)}
-                </td>
-              </tr>
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                style={{
+                  background: filter === f ? 'var(--accent)' : 'var(--bg-elevated)',
+                  color: filter === f ? 'var(--bg)' : 'var(--fg)',
+                  border: '1px solid var(--border)',
+                  // 'all' floats right per the requested layout.
+                  ...(f === 'all' ? { marginLeft: 'auto' } : {}),
+                }}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)} ({counts[f]})
+              </button>
             ))}
-          </tbody>
-        </table>
-        </>
-      )}
-
-      <h3>Request payment</h3>
-      {outstandingLines.length === 0 ? (
-        <p>Nothing outstanding to request.</p>
-      ) : (
-        <>
-          <div className="actions" style={{ marginBottom: '0.6rem' }}>
-            <button type="button" onClick={selectAll}>
-              Select all
-            </button>
-            <button type="button" onClick={selectNone}>
-              Select none
-            </button>
           </div>
           <table>
             <thead>
               <tr>
-                <th>Pay?</th>
-                <th>Item</th>
+                <th>Title</th>
+                <th>Status</th>
                 <th>Price</th>
+                <th style={{ textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {outstandingLines.map((l) => (
-                <tr key={l.achievementKey}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      aria-label={`request-${l.achievementKey}`}
-                      checked={selectedKeys.has(l.achievementKey)}
-                      onChange={() => toggleSelected(l.achievementKey)}
-                    />
-                  </td>
-                  <td>
-                    {l.title}
-                    {l.badgeLevel && (
-                      <span style={{ color: 'var(--fg-dim)', marginLeft: '0.5rem' }}>
-                        ({l.badgeLevel})
-                      </span>
-                    )}
-                  </td>
-                  <td>{formatMoney(l.currentUnitPrice ?? 0)}</td>
-                </tr>
-              ))}
+              {visibleLines.map((l) => {
+                const s = lineStatuses.get(l.achievementKey)!;
+                return (
+                  <tr key={l.achievementKey}>
+                    <td>
+                      {l.title}
+                      {l.badgeLevel && (
+                        <span style={{ color: 'var(--fg-dim)', marginLeft: '0.5rem' }}>
+                          ({l.badgeLevel})
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {STATUS_LABEL[s]}
+                      {s === 'unpriced' && l.badgeLevel && (
+                        <span style={{ color: 'var(--fg-dim)', marginLeft: '0.4rem' }}>
+                          — payer should add a Badge {l.badgeLevel} rule
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {l.paid
+                        ? formatMoney(l.paid.unitPriceAtPayment)
+                        : l.currentUnitPrice === null
+                          ? '—'
+                          : formatMoney(l.currentUnitPrice)}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {s === 'outstanding' && (
+                        <button
+                          type="button"
+                          aria-label={`request-${l.achievementKey}`}
+                          onClick={() => requestSingle(l)}
+                          disabled={busyKey !== null}
+                        >
+                          Request
+                        </button>
+                      )}
+                      {s === 'requested' && (
+                        <button
+                          type="button"
+                          aria-label={`cancel-${l.achievementKey}`}
+                          onClick={() => cancelKey(l)}
+                          disabled={busyKey !== null}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          <p>
-            Selected total: <strong>{formatMoney(selectedTotal)}</strong>
-          </p>
-          <button
-            onClick={handleRequestPayment}
-            disabled={requesting || selectedLines.length === 0}
-          >
-            {requesting
-              ? 'Requesting…'
-              : `Request payment for ${selectedLines.length} item(s) (${formatMoney(selectedTotal)})`}
-          </button>
         </>
       )}
 
@@ -460,32 +394,6 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
               >
                 Dismiss
               </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h3>My requests</h3>
-      {state.requests.length === 0 ? (
-        <p>No requests submitted.</p>
-      ) : (
-        <ul>
-          {state.requests.map((r) => (
-            <li key={r.requestId}>
-              {r.requestedAt} · {formatMoney(r.totalAmount)} · {r.status}
-              {r.status === 'PENDING' && (
-                <>
-                  {' '}
-                  <button
-                    type="button"
-                    aria-label={`cancel-${r.requestId}`}
-                    onClick={() => cancelRequest(r)}
-                    disabled={requesting}
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
             </li>
           ))}
         </ul>
