@@ -117,6 +117,16 @@ Resources:
                     dynamodb:LeadingKeys:
                       - AGREEMENT
                       - PAYMENT
+        - PolicyName: invoke-fetcher-url
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunctionUrl
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-fetcher'
+                Condition:
+                  StringEquals:
+                    'lambda:FunctionUrlAuthType': AWS_IAM
 
   PlayerRole:
     Type: AWS::IAM::Role
@@ -169,6 +179,16 @@ Resources:
                   ForAllValues:StringEquals:
                     dynamodb:LeadingKeys:
                       - REQUEST
+        - PolicyName: invoke-fetcher-url
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunctionUrl
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-fetcher'
+                Condition:
+                  StringEquals:
+                    'lambda:FunctionUrlAuthType': AWS_IAM
 
   # Role mapping:
   #   - email == PayerEmail   → PayerRole
