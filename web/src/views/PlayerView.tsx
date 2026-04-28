@@ -4,6 +4,7 @@ import type { Payment } from '@cgd/shared';
 import { computeOutstandingLines, totals, type OutstandingLine } from '../data/derived.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
 import { findDuplicatePendingRequest } from '../data/duplicates.js';
+import { useToast } from '../ui/toast.js';
 import type { WebLedger } from '../data/ledger.js';
 import type { FunctionUrlClient } from '../data/function-url.js';
 
@@ -33,6 +34,7 @@ const INITIAL: DataState = {
 };
 
 export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerViewProps) {
+  const toast = useToast();
   const [state, setState] = useState<DataState>(INITIAL);
   const [refreshing, setRefreshing] = useState(false);
   const [requesting, setRequesting] = useState(false);
@@ -158,7 +160,8 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
 
   const cancelRequest = useCallback(
     async (r: PaymentRequest) => {
-      if (!confirm('Cancel this payment request? It will be removed.')) return;
+      const ok = await toast.confirm('Cancel this payment request? It will be removed.');
+      if (!ok) return;
       setError(null);
       try {
         await ledger.deletePaymentRequest(r);
@@ -166,11 +169,14 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
           ...s,
           requests: s.requests.filter((x) => x.requestId !== r.requestId),
         }));
+        toast.success('Request cancelled.');
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'cancel-failed');
+        const msg = e instanceof Error ? e.message : 'cancel-failed';
+        setError(msg);
+        toast.error(`Cancel failed: ${msg}`);
       }
     },
-    [ledger],
+    [ledger, toast],
   );
 
   const handleResendNotify = useCallback(async () => {

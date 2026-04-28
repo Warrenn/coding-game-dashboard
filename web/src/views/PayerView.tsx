@@ -10,6 +10,7 @@ import type {
 } from '@cgd/shared';
 import { computeOutstandingLines, totals } from '../data/derived.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
+import { useToast } from '../ui/toast.js';
 import type { WebLedger } from '../data/ledger.js';
 
 interface PayerViewProps {
@@ -39,6 +40,7 @@ const INITIAL: DataState = {
 };
 
 export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
+  const toast = useToast();
   const [state, setState] = useState<DataState>(INITIAL);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
@@ -169,12 +171,10 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
 
   const dismissAllInbox = useCallback(async () => {
     if (state.inbox.length === 0) return;
-    if (
-      !confirm(
-        `Dismiss all ${state.inbox.length} inbox notifications? Linked PENDING requests are CANCELLED.`,
-      )
-    )
-      return;
+    const ok = await toast.confirm(
+      `Dismiss all ${state.inbox.length} inbox notifications? Linked PENDING requests are CANCELLED.`,
+    );
+    if (!ok) return;
     setError(null);
     try {
       await ledger.deleteInboxEntries(
@@ -197,10 +197,13 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
           refIds.has(r.requestId) && r.status === 'PENDING' ? { ...r, status: 'CANCELLED' } : r,
         ),
       }));
+      toast.success(`Dismissed ${state.inbox.length} notification(s).`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'dismiss-all-failed');
+      const msg = e instanceof Error ? e.message : 'dismiss-all-failed';
+      setError(msg);
+      toast.error(`Dismiss failed: ${msg}`);
     }
-  }, [ledger, state.inbox, state.requests]);
+  }, [ledger, state.inbox, state.requests, toast]);
 
   if (state.loading) return <p>Loading…</p>;
 

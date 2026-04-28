@@ -3,6 +3,7 @@ import type { AchievementLevel, AgreementMeta, PricingRule } from '@cgd/shared';
 import type { WebLedger } from '../data/ledger.js';
 import type { Role } from '../auth/types.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
+import { useToast } from '../ui/toast.js';
 
 interface AgreementPageProps {
   ledger: WebLedger;
@@ -16,6 +17,7 @@ function makeRuleId(): string {
 }
 
 export function AgreementPage({ ledger, role }: AgreementPageProps) {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<AgreementMeta | null>(null);
@@ -103,16 +105,21 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
 
   async function deleteRule(ruleId: string) {
     if (!isPayer) return;
-    if (!confirm('Delete this pricing rule? Any payments already recorded against it stay paid.'))
-      return;
+    const ok = await toast.confirm(
+      'Delete this pricing rule? Any payments already recorded against it stay paid.',
+    );
+    if (!ok) return;
     setSaving(true);
     setError(null);
     try {
       await ledger.deletePricingRule(ruleId);
       setRules((prev) => prev.filter((r) => r.ruleId !== ruleId));
       if (editingRuleId === ruleId) setEditingRuleId(null);
+      toast.success('Pricing rule deleted.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'delete-failed');
+      const msg = e instanceof Error ? e.message : 'delete-failed';
+      setError(msg);
+      toast.error(`Delete failed: ${msg}`);
     } finally {
       setSaving(false);
     }
