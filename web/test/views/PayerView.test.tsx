@@ -47,6 +47,9 @@ function fakeLedger(
     listRequests: jest.fn(async () => opts.requests ?? []),
     listInbox: jest.fn(async () => opts.inbox ?? []),
     recordPayment: jest.fn(async () => undefined),
+    deletePayment: jest.fn(async () => undefined),
+    setPaymentRequestStatus: jest.fn(async () => undefined),
+    writeInbox: jest.fn(async () => undefined),
   } as unknown as Parameters<typeof PayerView>[0]['ledger'];
 }
 
@@ -124,5 +127,54 @@ describe('PayerView', () => {
   it('shows "no payments" empty state when no history', async () => {
     render(<PayerView ledger={fakeLedger()} />);
     await waitFor(() => expect(screen.getByText(/No payments recorded yet/)).toBeInTheDocument());
+  });
+
+  it('undo deletes the payment and reverts a PAID request to PENDING', async () => {
+    const payments: Payment[] = [
+      {
+        paymentId: 'p1',
+        paidAt: NOW,
+        totalAmount: 10,
+        currency: 'ZAR',
+        lineItems: [
+          { achievementKey: 'BADGE#A', unitPriceAtPayment: 10, quantity: 1, description: '' },
+        ],
+      },
+    ];
+    const requests: PaymentRequest[] = [
+      {
+        requestId: 'req-1',
+        requestedAt: NOW,
+        achievementKeys: ['BADGE#A'],
+        totalAmount: 10,
+        currency: 'ZAR',
+        status: 'PAID',
+      },
+    ];
+    const ledger = fakeLedger({ payments, requests });
+    const origConfirm = globalThis.confirm;
+    globalThis.confirm = () => true;
+    try {
+      render(<PayerView ledger={ledger} now={() => new Date(NOW)} />);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'undo-p1' })).toBeInTheDocument(),
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'undo-p1' }));
+      });
+
+      await waitFor(() => expect(ledger.deletePayment).toHaveBeenCalled());
+      expect(ledger.setPaymentRequestStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'req-1' }),
+        'PENDING',
+      );
+      expect(ledger.writeInbox).toHaveBeenCalledWith(
+        'PLAYER',
+        expect.objectContaining({ subject: 'Payment was undone' }),
+      );
+    } finally {
+      globalThis.confirm = origConfirm;
+    }
   });
 });
