@@ -3,6 +3,7 @@ import { AuthProvider, useAuth, SignInPanel, PlayerOnly, PayerOnly } from './aut
 import { loadConfig, type AppConfig } from './config.js';
 import { FunctionUrlClient } from './data/function-url.js';
 import { useLedger } from './data/use-ledger.js';
+import { ToastProvider } from './ui/toast.js';
 import { AgreementPage } from './views/AgreementPage.js';
 import { PlayerView } from './views/PlayerView.js';
 import { PayerView } from './views/PayerView.js';
@@ -81,8 +82,10 @@ export function App() {
   }
 
   return (
-    <AuthProvider config={{ region: config.region, identityPoolId: config.identityPoolId }}>
-      <Inner config={config} />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider config={{ region: config.region, identityPoolId: config.identityPoolId }}>
+        <Inner config={config} />
+      </AuthProvider>
+    </ToastProvider>
   );
 }

@@ -246,3 +246,69 @@ input[type='checkbox'] {
   width: auto;
   vertical-align: middle;
 }
+
+.toast-container {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 1000;
+  max-width: min(400px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  padding: 0.8rem 1rem;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: toast-slide-in 0.18s ease-out;
+  font-size: 0.9rem;
+  pointer-events: auto;
+  font-family: var(--font-sans);
+}
+.toast p {
+  margin: 0;
+  color: var(--fg);
+}
+.toast-info {
+  border-left-color: var(--accent-2);
+}
+.toast-success {
+  border-left-color: var(--success);
+}
+.toast-error {
+  border-left-color: var(--danger);
+}
+.toast-confirm {
+  border-left-color: var(--accent);
+  flex-direction: column;
+  align-items: stretch;
+}
+.toast-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+.toast-actions button {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
