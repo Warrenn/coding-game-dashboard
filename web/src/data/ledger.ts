@@ -152,7 +152,38 @@ export class WebLedger {
     );
   }
 
+  async setPaymentRequestStatus(
+    req: PaymentRequest,
+    status: PaymentRequest['status'],
+  ): Promise<void> {
+    const next: PaymentRequest = { ...req, status };
+    await this.db.send(
+      new PutCommand({
+        TableName: this.table,
+        Item: { PK: 'REQUEST', SK: `${req.requestedAt}#${req.requestId}`, ...next },
+      }),
+    );
+  }
+
+  async deletePaymentRequest(req: PaymentRequest): Promise<void> {
+    await this.db.send(
+      new DeleteCommand({
+        TableName: this.table,
+        Key: { PK: 'REQUEST', SK: `${req.requestedAt}#${req.requestId}` },
+      }),
+    );
+  }
+
   // ---------- Inbox ----------
+
+  async deleteInboxEntry(recipient: Recipient, eventId: string): Promise<void> {
+    await this.db.send(
+      new DeleteCommand({
+        TableName: this.table,
+        Key: { PK: `INBOX#${recipient}`, SK: eventId },
+      }),
+    );
+  }
 
   async listInbox(recipient: Recipient): Promise<InboxEntry[]> {
     const { Items } = await this.db.send(
