@@ -80,13 +80,15 @@ function fakeLambda(opts: { okSnapshot?: boolean; okNotify?: boolean } = {}) {
 }
 
 describe('PlayerView', () => {
-  it('renders achievements with paid/outstanding status and totals', async () => {
+  it('renders outstanding-by-default and lets you filter', async () => {
     render(<PlayerView ledger={fakeLedger()} lambda={fakeLambda()} />);
+    // Default filter is outstanding; Gold A is the only outstanding line.
     await waitFor(() => expect(screen.getAllByText('Gold A').length).toBeGreaterThan(0));
+    // Bronze B is unpriced — switch filter to see it.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Unpriced/i }));
+    });
     expect(screen.getAllByText('Bronze B').length).toBeGreaterThan(0);
-    // Gold A → outstanding 10 ZAR; Bronze B → unpriced (no rule)
-    expect(screen.getAllByText(/R[\s ]?10[.,]00/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/1 item\(s\)/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('refresh button calls /snapshot', async () => {
@@ -102,22 +104,24 @@ describe('PlayerView', () => {
     await waitFor(() => expect(lambda.post).toHaveBeenCalledWith('/snapshot', {}));
   });
 
-  it('request payment writes REQUEST and calls /notify-payment-request', async () => {
+  it('per-row Request button writes a single-key REQUEST and notifies', async () => {
     const ledger = fakeLedger();
     const lambda = fakeLambda();
     render(<PlayerView ledger={ledger} lambda={lambda} now={() => new Date(NOW)} />);
     await waitFor(() => expect(screen.getAllByText('Gold A').length).toBeGreaterThan(0));
 
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', { name: /request payment for 1 item\(s\)/i }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'request-BADGE#A' }));
     });
 
     expect(ledger.submitPaymentRequest).toHaveBeenCalled();
+    const arg = (ledger.submitPaymentRequest as jest.Mock).mock.calls[0][0] as {
+      achievementKeys: string[];
+    };
+    expect(arg.achievementKeys).toEqual(['BADGE#A']);
     expect(lambda.post).toHaveBeenCalledWith(
       '/notify-payment-request',
-      expect.objectContaining({ subject: expect.stringContaining('1 item') }),
+      expect.objectContaining({ subject: expect.stringContaining('Gold A') }),
     );
   });
 
@@ -128,7 +132,8 @@ describe('PlayerView', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /refresh from codingame/i }));
     });
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    // Refresh failure surfaces as an inline alert (kept) plus a toast (best-effort).
+    await waitFor(() => expect(screen.queryAllByRole('alert').length).toBeGreaterThan(0));
   });
 
   it('shows empty-state message when no achievements detected', async () => {
@@ -139,14 +144,16 @@ describe('PlayerView', () => {
     );
   });
 
-  it('shows "Nothing outstanding to request" when no outstanding lines', async () => {
+  it('outstanding filter is empty when only unpriced lines exist', async () => {
     const ledger = fakeLedger({
       // Only Bronze, which has no rule → unpriced, not outstanding
       achievements: [ACHIEVEMENTS[1]],
     });
     render(<PlayerView ledger={ledger} lambda={fakeLambda()} />);
     await waitFor(() =>
-      expect(screen.getByText(/Nothing outstanding to request/i)).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: /^Outstanding/i })).toBeInTheDocument(),
     );
+    // No request buttons because nothing is outstanding.
+    expect(screen.queryByRole('button', { name: /^request-/ })).not.toBeInTheDocument();
   });
 });
