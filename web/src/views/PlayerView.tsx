@@ -263,8 +263,7 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
   if (state.loading) return <p>Loading…</p>;
 
   return (
-    <section aria-labelledby="player-heading">
-      <h2 id="player-heading">My achievements</h2>
+    <section aria-label="My achievements">
       {error && <p role="alert">{error}</p>}
 
       <div className="actions">

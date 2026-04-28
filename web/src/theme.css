@@ -375,3 +375,40 @@ input[type='checkbox'] {
     opacity: 1;
   }
 }
+
+.tablist {
+  display: flex;
+  gap: 0.25rem;
+  margin: 1rem 0 0;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid transparent;
+  border-bottom: none;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  margin-bottom: -1px;
+  transition: color 120ms ease, background 120ms ease;
+}
+.tab:hover:not(.tab-active) {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.03);
+}
+.tab.tab-active {
+  color: var(--accent);
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  border-bottom-color: var(--bg-elevated);
+}
+.tab:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+}
+[role='tabpanel'] {
+  padding-top: 1rem;
+}

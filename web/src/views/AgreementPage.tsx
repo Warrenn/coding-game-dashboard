@@ -175,9 +175,7 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
   if (loading) return <p>Loading agreement…</p>;
 
   return (
-    <section aria-labelledby="agreement-heading">
-      <h2 id="agreement-heading">Agreement</h2>
-
+    <section aria-label="Agreement">
       {error && <p role="alert">{error}</p>}
 
       <h3>Profile</h3>
