@@ -2,6 +2,7 @@
 // credentials issued by the Cognito Identity Pool; IAM policies enforce
 // per-role access (see infra/storage-identity.yaml).
 import {
+  BatchWriteCommand,
   DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
@@ -183,6 +184,23 @@ export class WebLedger {
         Key: { PK: `INBOX#${recipient}`, SK: eventId },
       }),
     );
+  }
+
+  /** Bulk-delete via BatchWriteItem (25 per call). */
+  async deleteInboxEntries(recipient: Recipient, eventIds: readonly string[]): Promise<void> {
+    if (eventIds.length === 0) return;
+    for (let i = 0; i < eventIds.length; i += 25) {
+      const chunk = eventIds.slice(i, i + 25);
+      await this.db.send(
+        new BatchWriteCommand({
+          RequestItems: {
+            [this.table]: chunk.map((eventId) => ({
+              DeleteRequest: { Key: { PK: `INBOX#${recipient}`, SK: eventId } },
+            })),
+          },
+        }),
+      );
+    }
   }
 
   async listInbox(recipient: Recipient): Promise<InboxEntry[]> {

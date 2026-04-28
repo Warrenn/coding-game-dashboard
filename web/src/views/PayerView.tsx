@@ -153,6 +153,21 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
     [ledger],
   );
 
+  const dismissAllInbox = useCallback(async () => {
+    if (state.inbox.length === 0) return;
+    if (!confirm(`Dismiss all ${state.inbox.length} inbox notifications?`)) return;
+    setError(null);
+    try {
+      await ledger.deleteInboxEntries(
+        'PAYER',
+        state.inbox.map((e) => e.eventId),
+      );
+      setState((s) => ({ ...s, inbox: [] }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'dismiss-all-failed');
+    }
+  }, [ledger, state.inbox]);
+
   if (state.loading) return <p>Loading…</p>;
 
   return (
@@ -169,7 +184,18 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         <dd>{formatMoney(t.paidAmount)}</dd>
       </dl>
 
-      <h3>Inbox</h3>
+      <h3>
+        Inbox{' '}
+        {state.inbox.length > 0 && (
+          <button
+            type="button"
+            onClick={dismissAllInbox}
+            style={{ marginLeft: '0.6rem', fontSize: '0.8rem' }}
+          >
+            Dismiss all ({state.inbox.length})
+          </button>
+        )}
+      </h3>
       {state.inbox.length === 0 ? (
         <p>No payment requests pending.</p>
       ) : (
