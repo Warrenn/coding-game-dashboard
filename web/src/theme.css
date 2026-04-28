@@ -312,3 +312,66 @@ input[type='checkbox'] {
     opacity: 1;
   }
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: modal-fade 0.15s ease-out;
+  padding: 1rem;
+}
+.modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.5rem;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: modal-pop 0.18s ease-out;
+}
+.modal h3 {
+  margin: 0 0 0.6rem;
+  color: var(--accent-2);
+  font-size: 1.05rem;
+}
+.modal p {
+  margin: 0;
+  color: var(--fg);
+  line-height: 1.5;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+.modal-actions button.danger {
+  background: var(--danger);
+  color: var(--bg);
+}
+.modal-actions button.danger:hover:not(:disabled) {
+  background: #ff7575;
+}
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modal-pop {
+  from {
+    transform: translateY(-8px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}

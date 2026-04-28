@@ -3,6 +3,7 @@ import type { AchievementLevel, AgreementMeta, PricingRule } from '@cgd/shared';
 import type { WebLedger } from '../data/ledger.js';
 import type { Role } from '../auth/types.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
+import { useModal } from '../ui/modal.js';
 import { useToast } from '../ui/toast.js';
 
 interface AgreementPageProps {
@@ -18,6 +19,7 @@ function makeRuleId(): string {
 
 export function AgreementPage({ ledger, role }: AgreementPageProps) {
   const toast = useToast();
+  const modal = useModal();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<AgreementMeta | null>(null);
@@ -105,9 +107,12 @@ export function AgreementPage({ ledger, role }: AgreementPageProps) {
 
   async function deleteRule(ruleId: string) {
     if (!isPayer) return;
-    const ok = await toast.confirm(
-      'Delete this pricing rule? Any payments already recorded against it stay paid.',
-    );
+    const ok = await modal.confirm({
+      title: 'Delete pricing rule?',
+      message: 'Any payments already recorded against it stay paid.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
     if (!ok) return;
     setSaving(true);
     setError(null);
