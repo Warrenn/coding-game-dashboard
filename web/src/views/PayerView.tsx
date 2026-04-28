@@ -115,6 +115,21 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         lineItems,
       };
       await ledger.recordPayment(payment);
+
+      // Auto-mark any PENDING request whose achievementKeys are now fully
+      // covered (across all payments + the one we just wrote).
+      const allPayments = [...state.payments, payment];
+      const paidKeys = new Set<string>();
+      for (const p of allPayments) {
+        for (const li of p.lineItems) paidKeys.add(li.achievementKey);
+      }
+      for (const r of state.requests) {
+        if (r.status !== 'PENDING') continue;
+        if (r.achievementKeys.every((k) => paidKeys.has(k))) {
+          await ledger.setPaymentRequestStatus(r, 'PAID');
+        }
+      }
+
       setSelected(new Set());
       setNote('');
       await reload();
@@ -123,7 +138,20 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
     } finally {
       setRecording(false);
     }
-  }, [selected, outstanding, ledger, now, note, reload]);
+  }, [selected, outstanding, ledger, now, note, state.payments, state.requests, reload]);
+
+  const dismissInbox = useCallback(
+    async (eventId: string) => {
+      setError(null);
+      try {
+        await ledger.deleteInboxEntry('PAYER', eventId);
+        setState((s) => ({ ...s, inbox: s.inbox.filter((e) => e.eventId !== eventId) }));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'dismiss-failed');
+      }
+    },
+    [ledger],
+  );
 
   if (state.loading) return <p>Loading…</p>;
 
@@ -148,7 +176,14 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
         <ul>
           {state.inbox.map((e) => (
             <li key={e.eventId}>
-              <strong>{e.subject}</strong> — {e.message}
+              <strong>{e.subject}</strong> — {e.message}{' '}
+              <button
+                type="button"
+                aria-label={`dismiss-${e.eventId}`}
+                onClick={() => dismissInbox(e.eventId)}
+              >
+                Dismiss
+              </button>
             </li>
           ))}
         </ul>

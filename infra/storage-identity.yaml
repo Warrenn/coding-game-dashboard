@@ -117,6 +117,12 @@ Resources:
                     dynamodb:LeadingKeys:
                       - AGREEMENT
                       - PAYMENT
+                      # Payer can mark a REQUEST as PAID/CANCELLED and
+                      # delete duplicate PENDING rows. Player still owns
+                      # creation; UI never lets the payer create one.
+                      - REQUEST
+                      # Payer can dismiss their own INBOX notifications.
+                      - INBOX#PAYER
         - PolicyName: invoke-fetcher-url
           PolicyDocument:
             Version: '2012-10-17'
