@@ -288,8 +288,7 @@ export function PayerView({ ledger, now = () => new Date() }: PayerViewProps) {
   if (state.loading) return <p>Loading…</p>;
 
   return (
-    <section aria-labelledby="payer-heading">
-      <h2 id="payer-heading">Ledger</h2>
+    <section aria-label="Ledger">
       {error && <p role="alert">{error}</p>}
 
       <dl className="totals">

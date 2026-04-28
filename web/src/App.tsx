@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AuthProvider, useAuth, SignInPanel, PlayerOnly, PayerOnly } from './auth/index.js';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AuthProvider, useAuth, SignInPanel } from './auth/index.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { FunctionUrlClient } from './data/function-url.js';
 import { useLedger } from './data/use-ledger.js';
@@ -8,6 +8,14 @@ import { ToastProvider } from './ui/toast.js';
 import { AgreementPage } from './views/AgreementPage.js';
 import { PlayerView } from './views/PlayerView.js';
 import { PayerView } from './views/PayerView.js';
+
+type TabId = 'ledger' | 'agreement' | 'achievements';
+
+interface TabSpec {
+  id: TabId;
+  label: string;
+  panel: ReactNode;
+}
 
 function SignedInShell({ config }: { config: AppConfig }) {
   const { user, role, credentials, signOut } = useAuth();
@@ -25,6 +33,44 @@ function SignedInShell({ config }: { config: AppConfig }) {
     });
   }, [credentials, config.lambdaUrl, config.region]);
 
+  // Payer's primary view is the Ledger; player's is Agreement (until they have
+  // a handle configured, achievements panel can't load anything useful).
+  const tabs: TabSpec[] = useMemo(() => {
+    if (!ledger || !role) return [];
+    if (role === 'PAYER') {
+      return [
+        { id: 'ledger', label: 'Ledger', panel: <PayerView ledger={ledger} /> },
+        {
+          id: 'agreement',
+          label: 'Agreement',
+          panel: <AgreementPage ledger={ledger} role={role} />,
+        },
+      ];
+    }
+    const playerTabs: TabSpec[] = [
+      {
+        id: 'agreement',
+        label: 'Agreement',
+        panel: <AgreementPage ledger={ledger} role={role} />,
+      },
+    ];
+    if (lambda) {
+      playerTabs.push({
+        id: 'achievements',
+        label: 'My achievements',
+        panel: <PlayerView ledger={ledger} lambda={lambda} />,
+      });
+    }
+    return playerTabs;
+  }, [ledger, role, lambda]);
+
+  const [active, setActive] = useState<TabId | null>(null);
+  useEffect(() => {
+    if (tabs.length === 0) return;
+    if (active && tabs.some((t) => t.id === active)) return;
+    setActive(tabs[0].id);
+  }, [tabs, active]);
+
   return (
     <main>
       <header>
@@ -34,10 +80,38 @@ function SignedInShell({ config }: { config: AppConfig }) {
           <button onClick={signOut}>sign out</button>
         </div>
       </header>
-      {/* Payer wants Ledger first; player wants Agreement first. */}
-      <PayerOnly>{ledger && <PayerView ledger={ledger} />}</PayerOnly>
-      {ledger && role && <AgreementPage ledger={ledger} role={role} />}
-      <PlayerOnly>{ledger && lambda && <PlayerView ledger={ledger} lambda={lambda} />}</PlayerOnly>
+      {tabs.length > 0 && (
+        <>
+          <div role="tablist" aria-label="Sections" className="tablist">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`tab-${t.id}`}
+                aria-controls={`panel-${t.id}`}
+                aria-selected={active === t.id}
+                tabIndex={active === t.id ? 0 : -1}
+                onClick={() => setActive(t.id)}
+                className={active === t.id ? 'tab tab-active' : 'tab'}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {tabs.map((t) => (
+            <div
+              key={t.id}
+              role="tabpanel"
+              id={`panel-${t.id}`}
+              aria-labelledby={`tab-${t.id}`}
+              hidden={active !== t.id}
+            >
+              {t.panel}
+            </div>
+          ))}
+        </>
+      )}
     </main>
   );
 }
