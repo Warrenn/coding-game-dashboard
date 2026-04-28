@@ -24,7 +24,9 @@ export class FunctionUrlClient {
     this.origin = new URL(opts.baseUrl);
     this.region = opts.region;
     this.getCreds = opts.credentialsProvider;
-    this.fetchImpl = opts.fetchImpl ?? fetch;
+    // Bind to globalThis so calling via `this.fetchImpl(...)` doesn't trip
+    // the browser's "Illegal invocation" check on detached method refs.
+    this.fetchImpl = opts.fetchImpl ?? fetch.bind(globalThis);
   }
 
   async post(path: string, body: unknown): Promise<Response> {

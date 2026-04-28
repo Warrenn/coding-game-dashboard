@@ -54,10 +54,6 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
     }
   }, [ledger]);
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
@@ -74,6 +70,30 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
       setRefreshing(false);
     }
   }, [lambda, reload]);
+
+  // Initial load: hit DDB first, then trigger CodinGame fetch automatically
+  // if no snapshot exists yet so the user doesn't have to click Refresh.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await reload();
+      if (cancelled) return;
+      // After reload, if state.snapshot is still null, kick a fetch.
+      // We re-read via state setter to avoid a stale-closure dep.
+      setState((s) => {
+        if (!s.snapshot && !cancelled) {
+          void handleRefresh();
+        }
+        return s;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // handleRefresh is intentionally omitted — it depends on reload which
+    // already changes when ledger changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reload]);
 
   const lines: OutstandingLine[] = computeOutstandingLines(state);
   const t = totals(lines);

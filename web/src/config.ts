@@ -1,38 +1,41 @@
-// Web app configuration. Vite injects VITE_* env vars at build time. The
-// deploy script writes a .env.production based on CloudFormation outputs;
-// for local dev, drop a .env.local with the same keys.
-import type { AuthConfig } from './auth/index.js';
+// Runtime config loaded from /config.json (written by scripts/deploy.sh from
+// CloudFormation outputs). Keeping config out of the bundle means swapping
+// emails / re-pointing endpoints does NOT require a rebuild.
 
-interface AppConfig extends AuthConfig {
+export interface AppConfig {
+  region: string;
+  identityPoolId: string;
   googleClientId: string;
   ledgerTable: string;
   lambdaUrl: string;
 }
 
-function readEnv(key: string, fallback = ''): string {
-  // Vite replaces `import.meta.env.VITE_*` at build time. In Jest, env is
-  // empty; tests construct their own config and don't read this module.
-  const env = (import.meta as { env?: Record<string, string | undefined> }).env;
-  return env?.[key] ?? fallback;
+let cached: AppConfig | null = null;
+
+const CONFIG_URL = '/config.json';
+
+/** Test-only: clears the in-memory cache so the next loadConfig() refetches. */
+export function _resetConfigCacheForTests(): void {
+  cached = null;
 }
 
-export const config: AppConfig = {
-  region: readEnv('VITE_AWS_REGION', 'us-east-1'),
-  identityPoolId: readEnv('VITE_COGNITO_IDENTITY_POOL_ID'),
-  payerEmail: readEnv('VITE_PAYER_EMAIL'),
-  playerEmail: readEnv('VITE_PLAYER_EMAIL'),
-  googleClientId: readEnv('VITE_GOOGLE_CLIENT_ID'),
-  ledgerTable: readEnv('VITE_LEDGER_TABLE'),
-  lambdaUrl: readEnv('VITE_LAMBDA_URL'),
-};
-
-export function isConfigComplete(): boolean {
-  return Boolean(
-    config.identityPoolId &&
-    config.payerEmail &&
-    config.playerEmail &&
-    config.googleClientId &&
-    config.ledgerTable &&
-    config.lambdaUrl,
-  );
+export async function loadConfig(): Promise<AppConfig> {
+  if (cached) return cached;
+  const res = await fetch(CONFIG_URL, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`config.json fetch failed: ${res.status}`);
+  }
+  const data = (await res.json()) as Partial<AppConfig>;
+  const required: (keyof AppConfig)[] = [
+    'region',
+    'identityPoolId',
+    'googleClientId',
+    'ledgerTable',
+    'lambdaUrl',
+  ];
+  for (const k of required) {
+    if (!data[k]) throw new Error(`config.json: missing ${k}`);
+  }
+  cached = data as AppConfig;
+  return cached;
 }

@@ -124,16 +124,20 @@ aws_ lambda update-function-code \
 echo "    lambda code uploaded"
 
 if [ "$HOSTING_OK" = true ]; then
-  echo "=== 6. Build web with CFN-output env vars ==="
-  VITE_AWS_REGION="$REGION" \
-  VITE_COGNITO_IDENTITY_POOL_ID="$IDENTITY_POOL" \
-  VITE_PAYER_EMAIL="$PAYER_EMAIL" \
-  VITE_PLAYER_EMAIL="$PLAYER_EMAIL" \
-  VITE_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
-  VITE_LEDGER_TABLE="$LEDGER_TABLE" \
-  VITE_LAMBDA_URL="$LAMBDA_URL" \
-    npm --prefix web run build
+  echo "=== 6. Build web bundle ==="
+  npm --prefix web run build
   echo "    web bundle built (web/dist)"
+
+  echo "    Generating runtime config.json from CFN outputs..."
+  cat > web/dist/config.json <<JSON
+{
+  "region": "$REGION",
+  "identityPoolId": "$IDENTITY_POOL",
+  "googleClientId": "$GOOGLE_CLIENT_ID",
+  "ledgerTable": "$LEDGER_TABLE",
+  "lambdaUrl": "$LAMBDA_URL"
+}
+JSON
 
   echo "=== 7. Sync web bundle to S3 ==="
   aws_ s3 sync web/dist "s3://$STATIC_BUCKET/" --delete

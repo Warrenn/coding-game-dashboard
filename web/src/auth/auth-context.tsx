@@ -6,11 +6,14 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react';
+import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
+import type { AwsCredentialIdentity } from '@aws-sdk/types';
 import {
   decodeJwtPayload,
   exchangeGoogleTokenForAwsCredentials,
   type CredentialsExchanger,
 } from './cognito.js';
+import { roleFromAssumedRoleArn } from './role.js';
 import type { AuthConfig, AuthContextValue, AuthState, Role } from './types.js';
 
 const initialState: AuthState = {
@@ -23,21 +26,30 @@ const initialState: AuthState = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Determines the app role from an STS GetCallerIdentity ARN. */
+export type RoleResolver = (input: {
+  region: string;
+  credentials: AwsCredentialIdentity;
+}) => Promise<Role | null>;
+
+const defaultRoleResolver: RoleResolver = async ({ region, credentials }) => {
+  const sts = new STSClient({ region, credentials });
+  const result = await sts.send(new GetCallerIdentityCommand({}));
+  return roleFromAssumedRoleArn(result.Arn);
+};
+
 export interface AuthProviderProps extends PropsWithChildren {
   config: AuthConfig;
   /** Override the credentials exchanger for tests. */
   exchanger?: CredentialsExchanger;
+  /** Override the role resolver for tests. */
+  roleResolver?: RoleResolver;
 }
 
-function determineRole(email: string, config: AuthConfig): Role | null {
-  if (email.toLowerCase() === config.payerEmail.toLowerCase()) return 'PAYER';
-  if (email.toLowerCase() === config.playerEmail.toLowerCase()) return 'PLAYER';
-  return null;
-}
-
-export function AuthProvider({ children, config, exchanger }: AuthProviderProps) {
+export function AuthProvider({ children, config, exchanger, roleResolver }: AuthProviderProps) {
   const [state, setState] = useState<AuthState>(initialState);
   const exchange = exchanger ?? exchangeGoogleTokenForAwsCredentials;
+  const resolveRole = roleResolver ?? defaultRoleResolver;
 
   const signInWithGoogleToken = useCallback(
     async (idToken: string) => {
@@ -55,7 +67,37 @@ export function AuthProvider({ children, config, exchanger }: AuthProviderProps)
       }
 
       const email = typeof payload.email === 'string' ? payload.email : '';
-      const role = determineRole(email, config);
+
+      let credentials: AwsCredentialIdentity;
+      try {
+        credentials = await exchange({
+          identityPoolId: config.identityPoolId,
+          region: config.region,
+          googleIdToken: idToken,
+        });
+      } catch (e) {
+        setState({
+          ...initialState,
+          status: 'error',
+          user: { email },
+          error: e instanceof Error ? e.message : 'cognito exchange failed',
+        });
+        return;
+      }
+
+      let role: Role | null;
+      try {
+        role = await resolveRole({ region: config.region, credentials });
+      } catch (e) {
+        setState({
+          ...initialState,
+          status: 'error',
+          user: { email },
+          error: e instanceof Error ? e.message : 'role resolution failed',
+        });
+        return;
+      }
+
       if (!role) {
         setState({
           ...initialState,
@@ -66,32 +108,19 @@ export function AuthProvider({ children, config, exchanger }: AuthProviderProps)
         return;
       }
 
-      try {
-        const credentials = await exchange({
-          identityPoolId: config.identityPoolId,
-          region: config.region,
-          googleIdToken: idToken,
-        });
-        setState({
-          status: 'signed-in',
-          user: {
-            email,
-            name: typeof payload.name === 'string' ? payload.name : undefined,
-            picture: typeof payload.picture === 'string' ? payload.picture : undefined,
-          },
-          role,
-          credentials,
-          error: null,
-        });
-      } catch (e) {
-        setState({
-          ...initialState,
-          status: 'error',
-          error: e instanceof Error ? e.message : 'cognito exchange failed',
-        });
-      }
+      setState({
+        status: 'signed-in',
+        user: {
+          email,
+          name: typeof payload.name === 'string' ? payload.name : undefined,
+          picture: typeof payload.picture === 'string' ? payload.picture : undefined,
+        },
+        role,
+        credentials,
+        error: null,
+      });
     },
-    [config, exchange],
+    [config, exchange, resolveRole],
   );
 
   const signOut = useCallback(() => {
