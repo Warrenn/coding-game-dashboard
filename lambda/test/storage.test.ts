@@ -64,13 +64,13 @@ describe('LedgerStorage', () => {
   });
 
   describe('putSnapshot', () => {
-    it('writes to PK=SNAPSHOT/SK=LATEST with a 15-min TTL', async () => {
+    it('writes to PK=SNAPSHOT/SK=LATEST with no TTL (persists until next refresh)', async () => {
       ddbMock.on(PutCommand).resolves({});
-      await makeStorage().putSnapshot(SNAPSHOT, FROZEN_TIME);
+      await makeStorage().putSnapshot(SNAPSHOT);
       const call = ddbMock.commandCalls(PutCommand)[0];
       expect(call.args[0].input.Item?.PK).toBe('SNAPSHOT');
       expect(call.args[0].input.Item?.SK).toBe('LATEST');
-      expect(call.args[0].input.Item?.ttl).toBe(Math.floor(FROZEN_TIME / 1000) + 900);
+      expect(call.args[0].input.Item?.ttl).toBeUndefined();
     });
   });
 

@@ -21,8 +21,6 @@ export interface InboxEntry {
   refId?: string;
 }
 
-const SNAPSHOT_TTL_SECONDS = 15 * 60;
-
 export class LedgerStorage {
   constructor(
     private readonly table: string,
@@ -41,8 +39,10 @@ export class LedgerStorage {
     };
   }
 
-  async putSnapshot(snapshot: Snapshot, now = Date.now()): Promise<void> {
-    const ttl = Math.floor(now / 1000) + SNAPSHOT_TTL_SECONDS;
+  // Snapshot persists until next refresh overwrites it. No TTL — earlier
+  // versions expired after 15 min, which silently blanked XP-milestone
+  // outstanding lines for the payer once any time passed.
+  async putSnapshot(snapshot: Snapshot): Promise<void> {
     await this.db.send(
       new PutCommand({
         TableName: this.table,
@@ -50,7 +50,6 @@ export class LedgerStorage {
           PK: 'SNAPSHOT',
           SK: 'LATEST',
           ...snapshot,
-          ttl,
         },
       }),
     );
