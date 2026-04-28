@@ -177,6 +177,21 @@ export class WebLedger {
 
   // ---------- Inbox ----------
 
+  async writeInbox(recipient: Recipient, entry: InboxEntry): Promise<void> {
+    await this.db.send(
+      new PutCommand({
+        TableName: this.table,
+        Item: {
+          PK: `INBOX#${recipient}`,
+          SK: entry.eventId,
+          subject: entry.subject,
+          message: entry.message,
+          refId: entry.refId ?? null,
+        },
+      }),
+    );
+  }
+
   async deleteInboxEntry(recipient: Recipient, eventId: string): Promise<void> {
     await this.db.send(
       new DeleteCommand({

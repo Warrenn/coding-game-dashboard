@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { DetectedAchievement, PaymentRequest, PricingRule, Snapshot } from '@cgd/shared';
+import type {
+  DetectedAchievement,
+  InboxEntry,
+  PaymentRequest,
+  PricingRule,
+  Snapshot,
+} from '@cgd/shared';
 import type { Payment } from '@cgd/shared';
 import { computeOutstandingLines, totals, type OutstandingLine } from '../data/derived.js';
 import { APP_CURRENCY, formatMoney } from '../data/currency.js';
@@ -22,6 +28,7 @@ interface DataState {
   rules: PricingRule[];
   payments: Payment[];
   requests: PaymentRequest[];
+  inbox: InboxEntry[];
 }
 
 const INITIAL: DataState = {
@@ -31,6 +38,7 @@ const INITIAL: DataState = {
   rules: [],
   payments: [],
   requests: [],
+  inbox: [],
 };
 
 export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerViewProps) {
@@ -46,19 +54,32 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
   const reload = useCallback(async () => {
     setError(null);
     try {
-      const [snapshot, achievements, rules, payments, requests] = await Promise.all([
+      const [snapshot, achievements, rules, payments, requests, inbox] = await Promise.all([
         ledger.getLatestSnapshot(),
         ledger.listAchievements(),
         ledger.listPricingRules(),
         ledger.listPayments(),
         ledger.listRequests(),
+        ledger.listInbox('PLAYER'),
       ]);
-      setState({ loading: false, snapshot, achievements, rules, payments, requests });
+      setState({ loading: false, snapshot, achievements, rules, payments, requests, inbox });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'load-failed');
       setState((s) => ({ ...s, loading: false }));
     }
   }, [ledger]);
+
+  const dismissInboxEntry = useCallback(
+    async (eventId: string) => {
+      try {
+        await ledger.deleteInboxEntry('PLAYER', eventId);
+        setState((s) => ({ ...s, inbox: s.inbox.filter((e) => e.eventId !== eventId) }));
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'dismiss-failed');
+      }
+    },
+    [ledger, toast],
+  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -326,6 +347,26 @@ export function PlayerView({ ledger, lambda, now = () => new Date() }: PlayerVie
           </tbody>
         </table>
         </>
+      )}
+
+      <h3>From the payer</h3>
+      {state.inbox.length === 0 ? (
+        <p>No messages.</p>
+      ) : (
+        <ul>
+          {state.inbox.map((e) => (
+            <li key={e.eventId}>
+              <strong>{e.subject}</strong> — {e.message}{' '}
+              <button
+                type="button"
+                aria-label={`dismiss-player-inbox-${e.eventId}`}
+                onClick={() => dismissInboxEntry(e.eventId)}
+              >
+                Dismiss
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
       <h3>My requests</h3>
