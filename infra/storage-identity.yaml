@@ -34,6 +34,11 @@ Parameters:
 Resources:
   LedgerTable:
     Type: AWS::DynamoDB::Table
+    # Stateful resource — explicit policies so CFN doesn't quietly delete
+    # the ledger on stack replace. MVP: Delete is the right call (we want
+    # tear-down to clean fully). Flip to Retain post-launch.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       TableName: !Sub '${AppName}-ledger'
       BillingMode: PAY_PER_REQUEST
@@ -136,7 +141,7 @@ Resources:
                 Action:
                   - lambda:InvokeFunctionUrl
                   - lambda:InvokeFunction
-                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-fetcher'
+                Resource: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-fetcher'
 
   PlayerRole:
     Type: AWS::IAM::Role
@@ -203,7 +208,7 @@ Resources:
                 Action:
                   - lambda:InvokeFunctionUrl
                   - lambda:InvokeFunction
-                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-fetcher'
+                Resource: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-fetcher'
 
   # Role mapping:
   #   - email == PayerEmail   → PayerRole
